@@ -31,7 +31,7 @@ const NewsletterSignup = () => {
     return (
     <Box sx={{ 
       py: 12, // More vertical padding
-      backgroundColor: 'primary.dark', // Darker background
+      backgroundColor: 'background.default', // Darker background
       color: 'white',
       position: 'relative',
       overflow: 'hidden',

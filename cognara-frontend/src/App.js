@@ -4,6 +4,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { StyledEngineProvider } from '@mui/material/styles';
 import { Box } from '@mui/material';
+
 import Layout from './components/Layout/Layout';
 import HomePage from './pages/HomePage';
 import ArticlePage from './pages/ArticlePage';
@@ -14,46 +15,48 @@ import NotFoundPage from './pages/NotFoundPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 
+
 const theme = createTheme({
   palette: {
+    mode: 'dark',  // Enables dark mode in MUI
     primary: {
-      main: '#1A1A2E',
+      main: '#82AFFF',         // Soft electric blue (calls-to-action, links)
+      light: '#A6C8FF',        // Lighter blue for hover states
+      dark: '#3E64FF',         // Deep blue for focus or contrast
+      contrastText: '#ffffff'
     },
     secondary: {
-      main: '#53354A',
-    },
-    error: {
-      main: '#E94560',
+      main: '#F2A365',         // Warm peach-orange accent
     },
     background: {
-      default: '#F5F5F5',
+      default: '#0F1117',      // Main background (very dark slate)
+      paper: '#1C1E26',        // Slightly lighter panel (cards, modals)
     },
+    text: {
+      primary: '#E6E8F0',      // Light gray-white text for high readability
+      secondary: '#A0A3B1'     // Muted gray for secondary text
+    }
   },
   typography: {
-    fontFamily: '"Inter", "Helvetica", "Arial", sans-serif',
-    h1: {
-      fontFamily: '"Playfair Display", serif',
-      fontWeight: 700,
-    },
-    h2: {
-      fontFamily: '"Playfair Display", serif',
-      fontWeight: 600,
-    },
-    h3: {
-      fontFamily: '"Playfair Display", serif',
-      fontWeight: 500,
-    },
+    fontFamily: '"Inter", "Segoe UI", "Roboto", sans-serif',
   },
   components: {
     MuiCssBaseline: {
       styleOverrides: {
         body: {
-          overflowX: 'hidden',
-        },
-      },
-    },
-  },
+          scrollbarWidth: 'none',  /* Firefox */
+          '&::-webkit-scrollbar': {  /* Chrome, Safari, Opera */
+            display: 'none'
+          },
+          '-ms-overflow-style': 'none'  /* IE/Edge */
+        }
+      }
+    }
+  }
+
 });
+
+
 
 function App() {
   return (
@@ -61,19 +64,21 @@ function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Router>
-          <Box sx={{ position: 'relative' }}>
-            <Layout>
+          <Box sx={{ 
+            position: 'relative',
+            backgroundColor: 'background.default',
+            minHeight: '100vh'
+          }}>
               <Routes>
-                <Route path="/" element={<HomePage showHero={true} />} />
+                <Route path="/" element={<Layout showHero={true}><HomePage/></Layout>} />
                 <Route path="/article/:slug" element={<ArticlePage />} />
                 <Route path="/submit-article" element={<SubmitArticlePage />} />
                 <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/login" element={<LoginPage />} />
-                <Route path="/about" element={<AboutPage />} />
+                <Route path="/about" element={<Layout showHero={false}><AboutPage /></Layout>} />
                 <Route path="/contact" element={<ContactPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
-            </Layout>
           </Box>
         </Router>
       </ThemeProvider>
