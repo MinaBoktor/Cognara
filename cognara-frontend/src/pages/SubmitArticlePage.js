@@ -4,22 +4,17 @@ import { Formik, Form, Field } from 'formik';
 import { TextField } from 'formik-mui';
 import * as Yup from 'yup';
 import Button from '@mui/material/Button';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
+import { articlesAPI } from '../services/api';
 
 const validationSchema = Yup.object().shape({
   title: Yup.string()
     .required('Title is required')
-    .max(100, 'Title must be at most 100 characters'),
+    .max(255, 'Title must be at most 255 characters'),
   content: Yup.string()
     .required('Content is required')
-    .min(500, 'Content must be at least 500 characters'),
-  excerpt: Yup.string()
-    .required('Excerpt is required')
-    .max(200, 'Excerpt must be at most 200 characters'),
-  tags: Yup.string(),
-  author_name: Yup.string().required('Your name is required'),
+    .min(100, 'Content must be at least 100 characters'),
   author_email: Yup.string()
     .email('Invalid email')
     .required('Email is required'),
@@ -30,9 +25,15 @@ const SubmitArticlePage = () => {
 
   const handleSubmit = async (values, { setSubmitting, setStatus }) => {
     try {
-      const response = await axios.post('/api/articles/submit/', values);
-      if (response.status === 200) {
-        navigate('/submission-success', { state: { article: response.data } });
+      const response = await articlesAPI.create(values);
+      if (response.status === 201) {
+        setStatus({
+          success: 'Article submitted successfully! It will be reviewed before publication.',
+        });
+        // Reset form or navigate to success page
+        setTimeout(() => {
+          navigate('/');
+        }, 2000);
       }
     } catch (error) {
       setStatus({
@@ -65,9 +66,6 @@ const SubmitArticlePage = () => {
           initialValues={{
             title: '',
             content: '',
-            excerpt: '',
-            tags: '',
-            author_name: '',
             author_email: '',
           }}
           validationSchema={validationSchema}
@@ -87,45 +85,13 @@ const SubmitArticlePage = () => {
               
               <Field
                 component={TextField}
-                name="excerpt"
-                label="Short Excerpt (Max 200 characters)"
-                variant="outlined"
-                fullWidth
-                margin="normal"
-                multiline
-                rows={3}
-                required
-              />
-              
-              <Field
-                component={TextField}
                 name="content"
-                label="Article Content (Min 500 characters, Markdown supported)"
+                label="Article Content (Markdown supported)"
                 variant="outlined"
                 fullWidth
                 margin="normal"
                 multiline
                 rows={10}
-                required
-              />
-              
-              <Field
-                component={TextField}
-                name="tags"
-                label="Tags (comma separated)"
-                variant="outlined"
-                fullWidth
-                margin="normal"
-                helperText="e.g., technology, science, business"
-              />
-              
-              <Field
-                component={TextField}
-                name="author_name"
-                label="Your Name"
-                variant="outlined"
-                fullWidth
-                margin="normal"
                 required
               />
               
@@ -142,6 +108,12 @@ const SubmitArticlePage = () => {
               {status?.error && (
                 <Alert severity="error" sx={{ mb: 2 }}>
                   {status.error}
+                </Alert>
+              )}
+              
+              {status?.success && (
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  {status.success}
                 </Alert>
               )}
               

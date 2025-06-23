@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Container, Grid, Typography, Box } from '@mui/material';
 import { Helmet } from 'react-helmet';
 import ArticleCard from '../components/Article/ArticleCard';
-import axios from 'axios';
+import { articlesAPI } from '../services/api';
 
 const HomePage = () => {  // Remove showHero prop
   const [articles, setArticles] = useState([]);
@@ -12,7 +12,7 @@ const HomePage = () => {  // Remove showHero prop
   useEffect(() => {
     const fetchArticles = async () => {
       try {
-        const response = await axios.get('/api/articles/');
+        const response = await articlesAPI.getApproved();
         setArticles(response.data);
       } catch (error) {
         console.error('Error fetching articles:', error);

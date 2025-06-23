@@ -26,9 +26,6 @@ const ArticleCard = ({ article }) => {
         />
       )}
       <CardContent sx={{ flexGrow: 1 }}>
-        <Typography variant="overline" color="text.secondary">
-          {article.tags.join(', ')}
-        </Typography>
         <Typography variant="h5" component="h3" gutterBottom sx={{ 
           fontWeight: 600,
           mt: 1
@@ -39,7 +36,10 @@ const ArticleCard = ({ article }) => {
           mb: 2,
           color: 'text.secondary'
         }}>
-          {article.excerpt}
+          {article.content?.substring(0, 150)}...
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          By {article.author_email} • {new Date(article.created_at).toLocaleDateString()}
         </Typography>
       </CardContent>
       <Box sx={{ p: 2 }}>

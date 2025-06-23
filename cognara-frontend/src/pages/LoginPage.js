@@ -5,8 +5,8 @@ import { TextField } from 'formik-mui';
 import * as Yup from 'yup';
 import Button from '@mui/material/Button';
 import { Helmet } from 'react-helmet';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
 const validationSchema = Yup.object().shape({
   email: Yup.string().email('Invalid email').required('Email is required'),
@@ -18,7 +18,7 @@ const LoginPage = () => {
 
   const handleSubmit = async (values, { setSubmitting, setStatus }) => {
     try {
-      const response = await axios.post('/api/auth/login/', values);
+      const response = await api.post('auth/login/', values);
       localStorage.setItem('token', response.data.token);
       navigate('/admin');
     } catch (error) {

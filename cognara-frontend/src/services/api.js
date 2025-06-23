@@ -1,87 +1,52 @@
 import axios from 'axios';
 
-const API = axios.create({
-  baseURL: '/api',
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api';
+
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Add a request interceptor to include the auth token if available
-API.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-export const getArticles = async (params = {}) => {
-  try {
-    const response = await API.get('/articles/', { params });
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
+// Articles API
+export const articlesAPI = {
+  // Get all articles
+  getAll: () => apiClient.get('/articles/'),
+  
+  // Get approved articles only
+  getApproved: () => apiClient.get('/articles/?approved=true'),
+  
+  // Get single article by ID
+  getById: (id) => apiClient.get(`/articles/${id}/`),
+  
+  // Get article by slug
+  getBySlug: (slug) => apiClient.get(`/articles/by-slug/${slug}/`),
+  
+  // Create new article
+  create: (articleData) => apiClient.post('/articles/', articleData),
+  
+  // Update article
+  update: (id, articleData) => apiClient.put(`/articles/${id}/`, articleData),
+  
+  // Delete article
+  delete: (id) => apiClient.delete(`/articles/${id}/`),
+  
+  // Approve article
+  approve: (id) => apiClient.post(`/articles/${id}/approve/`),
 };
 
-export const getArticleBySlug = async (slug) => {
-  try {
-    const response = await API.get(`/articles/${slug}/`);
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
+// Subscribers API
+export const subscribersAPI = {
+  // Get all subscribers
+  getAll: () => apiClient.get('/subscribers/'),
+  
+  // Create new subscriber
+  create: (subscriberData) => apiClient.post('/subscribers/', subscriberData),
+  
+  // Delete subscriber
+  delete: (id) => apiClient.delete(`/subscribers/${id}/`),
 };
 
-export const submitArticle = async (articleData) => {
-  try {
-    const response = await API.post('/articles/submit/', articleData);
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
-};
+export default apiClient;
 
-export const approveArticle = async (articleId) => {
-  try {
-    const response = await API.put(`/articles/${articleId}/approve/`);
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
-};
-
-export const deleteArticle = async (articleId) => {
-  try {
-    const response = await API.delete(`/articles/${articleId}/`);
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
-};
-
-export const subscribeNewsletter = async (email) => {
-  try {
-    const response = await API.post('/newsletter/subscribe/', { email });
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
-};
-
-export const sendNewsletter = async (articleId) => {
-  try {
-    const response = await API.post('/newsletter/send/', { article_id: articleId });
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
-};
-
-export default API;

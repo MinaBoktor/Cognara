@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Container, Typography, Box, IconButton, Divider, Chip } from '@mui/material';
-import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import { Helmet } from 'react-helmet';
 import { Facebook, Twitter, LinkedIn, Link as LinkIcon } from '@mui/icons-material';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import ArticleComments from '../components/Article/ArticleComments';
+import { articlesAPI } from '../services/api';
 
 const ArticlePage = () => {
   const { slug } = useParams();
@@ -18,7 +18,7 @@ const ArticlePage = () => {
   useEffect(() => {
     const fetchArticle = async () => {
       try {
-        const response = await axios.get(`/api/articles/${slug}/`);
+        const response = await articlesAPI.getBySlug(slug);
         setArticle(response.data);
       } catch (err) {
         setError(err.response?.data?.message || 'Article not found');
@@ -59,11 +59,10 @@ const ArticlePage = () => {
     <Container maxWidth="md">
       <Helmet>
         <title>{article.title} | Cognara</title>
-        <meta name="description" content={article.excerpt} />
+        <meta name="description" content={article.content?.substring(0, 160)} />
         <meta property="og:title" content={article.title} />
-        <meta property="og:description" content={article.excerpt} />
+        <meta property="og:description" content={article.content?.substring(0, 160)} />
         <meta property="og:type" content="article" />
-        {article.featured_image && <meta property="og:image" content={article.featured_image} />}
         <meta name="twitter:card" content="summary_large_image" />
       </Helmet>
       
@@ -74,34 +73,15 @@ const ArticlePage = () => {
         
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
           <Typography variant="subtitle1" color="text.secondary" sx={{ mr: 2 }}>
-            By {article.author_name}
+            By {article.author_email}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            {new Date(article.published_at).toLocaleDateString('en-US', {
+            {new Date(article.created_at).toLocaleDateString('en-US', {
               year: 'numeric',
               month: 'long',
               day: 'numeric'
             })}
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
-            {article.reading_time} min read
-          </Typography>
-        </Box>
-        
-        {article.featured_image && (
-          <Box sx={{ mb: 4 }}>
-            <img 
-              src={article.featured_image} 
-              alt={article.title} 
-              style={{ width: '100%', borderRadius: '8px', maxHeight: '500px', objectFit: 'cover' }}
-            />
-          </Box>
-        )}
-        
-        <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
-          {article.tags.map(tag => (
-            <Chip key={tag} label={tag} size="small" />
-          ))}
         </Box>
         
         <Box sx={{ mb: 4 }}>
