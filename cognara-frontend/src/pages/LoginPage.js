@@ -1,92 +1,61 @@
+// src/pages/LoginPage.js
 import React from 'react';
-import { Container, Typography, Box } from '@mui/material';
-import { Formik, Form, Field } from 'formik';
-import { TextField } from 'formik-mui';
-import * as Yup from 'yup';
-import Button from '@mui/material/Button';
-import { Helmet } from 'react-helmet';
-import { useNavigate } from 'react-router-dom';
-import api from '../services/api';
-
-const validationSchema = Yup.object().shape({
-  email: Yup.string().email('Invalid email').required('Email is required'),
-  password: Yup.string().required('Password is required'),
-});
+import { Container, Paper, TextField, Button, Typography, Box } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
+import Layout from '../components/Layout/Layout';
 
 const LoginPage = () => {
-  const navigate = useNavigate();
-
-  const handleSubmit = async (values, { setSubmitting, setStatus }) => {
-    try {
-      const response = await api.post('auth/login/', values);
-      localStorage.setItem('token', response.data.token);
-      navigate('/admin');
-    } catch (error) {
-      setStatus({ error: error.response?.data?.message || 'Login failed' });
-    } finally {
-      setSubmitting(false);
-    }
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    // TODO: Implement actual login logic
+    alert('Login functionality not implemented yet.');
   };
 
   return (
-    <Container maxWidth="sm">
-      <Helmet>
-        <title>Login | Cognara</title>
-      </Helmet>
-      <Box sx={{ my: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Typography variant="h3" component="h1" gutterBottom>
-          Admin Login
-        </Typography>
-        
-        <Formik
-          initialValues={{
-            email: '',
-            password: '',
-          }}
-          validationSchema={validationSchema}
-          onSubmit={handleSubmit}
-        >
-          {({ isSubmitting, status }) => (
-            <Form>
-              <Field
-                component={TextField}
-                name="email"
-                label="Email"
-                variant="outlined"
-                fullWidth
-                margin="normal"
-              />
-              <Field
-                component={TextField}
-                name="password"
-                label="Password"
-                type="password"
-                variant="outlined"
-                fullWidth
-                margin="normal"
-              />
-              
-              {status?.error && (
-                <Typography color="error" paragraph>
-                  {status.error}
-                </Typography>
-              )}
-              
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                disabled={isSubmitting}
-                fullWidth
-                sx={{ mt: 3, mb: 2 }}
-              >
-                Login
-              </Button>
-            </Form>
-          )}
-        </Formik>
-      </Box>
-    </Container>
+    <Layout>
+      <Container component="main" maxWidth="xs" sx={{ mt: 8 }}>
+        <Paper elevation={3} sx={{ padding: 4, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <Typography component="h1" variant="h5">
+            Sign in
+          </Typography>
+          <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="email"
+              label="Email Address"
+              name="email"
+              autoComplete="email"
+              autoFocus
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="password"
+              label="Password"
+              type="password"
+              id="password"
+              autoComplete="current-password"
+            />
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              sx={{ mt: 3, mb: 2 }}
+            >
+              Sign In
+            </Button>
+            <Box textAlign="center">
+                <RouterLink to="/signup" variant="body2">
+                    {"Don't have an account? Sign Up"}
+                </RouterLink>
+            </Box>
+          </Box>
+        </Paper>
+      </Container>
+    </Layout>
   );
 };
 

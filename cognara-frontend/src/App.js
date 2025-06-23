@@ -1,3 +1,5 @@
+// src/App.js (Updated)
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
@@ -11,30 +13,33 @@ import ArticlePage from './pages/ArticlePage';
 import SubmitArticlePage from './pages/SubmitArticlePage';
 import AdminDashboard from './pages/AdminDashboard';
 import LoginPage from './pages/LoginPage';
+import SignUpPage from './pages/SignUpPage'; // <-- Import
 import NotFoundPage from './pages/NotFoundPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
+import NewsletterSignup from './components/Newsletter/NewsletterSignup';
 
 
 const theme = createTheme({
+  // ... your existing theme object
   palette: {
-    mode: 'dark',  // Enables dark mode in MUI
+    mode: 'dark',
     primary: {
-      main: '#82AFFF',         // Soft electric blue (calls-to-action, links)
-      light: '#A6C8FF',        // Lighter blue for hover states
-      dark: '#3E64FF',         // Deep blue for focus or contrast
+      main: '#82AFFF',
+      light: '#A6C8FF',
+      dark: '#3E64FF',
       contrastText: '#ffffff'
     },
     secondary: {
-      main: '#F2A365',         // Warm peach-orange accent
+      main: '#F2A365',
     },
     background: {
-      default: '#0F1117',      // Main background (very dark slate)
-      paper: '#1C1E26',        // Slightly lighter panel (cards, modals)
+      default: '#0F1117',
+      paper: '#1C1E26',
     },
     text: {
-      primary: '#E6E8F0',      // Light gray-white text for high readability
-      secondary: '#A0A3B1'     // Muted gray for secondary text
+      primary: '#E6E8F0',
+      secondary: '#A0A3B1'
     }
   },
   typography: {
@@ -45,15 +50,14 @@ const theme = createTheme({
       styleOverrides: {
         body: {
           scrollbarWidth: 'none',  /* Firefox */
-          '&::-webkit-scrollbar': {  /* Chrome, Safari, Opera */
+          '&::-webkit-scrollbar': {
             display: 'none'
           },
-          '-ms-overflow-style': 'none'  /* IE/Edge */
+          '-ms-overflow-style': 'none'
         }
       }
     }
   }
-
 });
 
 
@@ -70,6 +74,7 @@ function App() {
             minHeight: '100vh'
           }}>
               <Routes>
+                {/* Your existing routes are great. Add the new ones below. */}
                 <Route path="/" element={<Layout showHero={true}><HomePage/></Layout>} />
                 <Route path="/article/:slug" element={<ArticlePage />} />
                 <Route path="/submit-article" element={<SubmitArticlePage />} />
@@ -77,6 +82,15 @@ function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/about" element={<Layout showHero={false}><AboutPage /></Layout>} />
                 <Route path="/contact" element={<ContactPage />} />
+                <Route path="/newsletter" element={<Layout showHero={false}><NewsletterSignup /></Layout>} />
+
+
+                <Route path="/signup" element={<SignUpPage />} />
+                <Route path="/submit" element={<SubmitArticlePage />} />
+
+                <Route path="/privacy" element={<NotFoundPage />} /> 
+                <Route path="/terms" element={<NotFoundPage />} />
+
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
           </Box>
