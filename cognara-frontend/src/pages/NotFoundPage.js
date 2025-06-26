@@ -5,7 +5,6 @@ import { Link as RouterLink } from 'react-router-dom';
 import Layout from '../components/Layout/Layout';
 
 const NotFoundPage = () => (
-    <Layout>
         <Box
             sx={{
                 display: 'flex',
@@ -29,7 +28,6 @@ const NotFoundPage = () => (
                 Go Back Home
             </Button>
         </Box>
-  </Layout>
 );
 
 export default NotFoundPage;

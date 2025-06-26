@@ -67,34 +67,33 @@ function App() {
     <StyledEngineProvider injectFirst>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <Router>
-          <Box sx={{ 
-            position: 'relative',
-            backgroundColor: 'background.default',
-            minHeight: '100vh'
-          }}>
-              <Routes>
-                {/* Your existing routes are great. Add the new ones below. */}
-                <Route path="/" element={<Layout showHero={true}><HomePage/></Layout>} />
-                <Route path="/article/:slug" element={<ArticlePage />} />
-                <Route path="/submit-article" element={<SubmitArticlePage />} />
-                <Route path="/admin" element={<AdminDashboard />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/about" element={<Layout showHero={false}><AboutPage /></Layout>} />
-                <Route path="/contact" element={<ContactPage />} />
-                <Route path="/newsletter" element={<Layout showHero={false}><NewsletterSignup /></Layout>} />
+          <Router>
+            <Box sx={{ 
+              position: 'relative',
+              backgroundColor: 'background.default',
+              minHeight: '100vh'
+            }}>
+                <Routes>
+                  <Route path="/" element={<Layout showHero={true}><HomePage/></Layout>} />
+                  <Route path="/article/:slug" element={<ArticlePage />} />
+                  <Route path="/admin" element={<AdminDashboard />} />
+                  <Route path="/login" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><LoginPage /></Layout>} />
+                  <Route path="/about" element={<Layout showHero={false}><AboutPage /></Layout>} />
+                  <Route path="/contact" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><ContactPage /></Layout>} />
+                  <Route path="/newsletter" element={<Layout showHero={false}><NewsletterSignup /></Layout>} />
 
 
-                <Route path="/signup" element={<SignUpPage />} />
-                <Route path="/submit" element={<SubmitArticlePage />} />
+                  <Route path="/signup" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><SignUpPage /></Layout>} />
+                  <Route path="/submit" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><SubmitArticlePage /></Layout>} />
 
-                <Route path="/privacy" element={<NotFoundPage />} /> 
-                <Route path="/terms" element={<NotFoundPage />} />
+                  <Route path="/privacy" element={<NotFoundPage />} /> 
+                  <Route path="/terms" element={<NotFoundPage />} />
+                  <Route path="/forget" element={<NotFoundPage />} />
 
-                <Route path="*" element={<NotFoundPage />} />
-              </Routes>
-          </Box>
-        </Router>
+                  <Route path="*" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><NotFoundPage /></Layout>} />
+                </Routes>
+            </Box>
+          </Router>
       </ThemeProvider>
     </StyledEngineProvider>
   );

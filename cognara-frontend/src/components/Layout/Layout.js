@@ -5,7 +5,7 @@ import Footer from './Footer';
 import NewsletterSignup from '../Newsletter/NewsletterSignup';
 import HeroSection from '../HeroSection';
 
-const Layout = ({ children, showHero = false }) => {
+const Layout = ({ children, showHero = false, showHeader = true, showNewsletter = true }) => {
   return (
     <Box sx={{ 
       display: 'flex', 
@@ -14,7 +14,8 @@ const Layout = ({ children, showHero = false }) => {
       backgroundColor: 'background.default',
       overflowX: 'hidden'
     }}>
-      <Header />
+      {showHeader && <Header />}
+      
       
       {/* Hero Section */}
       {showHero && <HeroSection />}
@@ -34,8 +35,7 @@ const Layout = ({ children, showHero = false }) => {
       >
         {children}
       </Container>
-
-      <NewsletterSignup />
+      {showNewsletter && <NewsletterSignup />}
       <Footer />
     </Box>
   );

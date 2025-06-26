@@ -198,6 +198,17 @@ const SubmitArticlePage = () => {
         .ltr-content-editor [style*="text-align: left"] {
           text-align: left !important;
         }
+        .sticky-toolbar {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          z-index: 1300 !important;
+          background-color: ${theme.palette.background.paper} !important;
+          border-bottom: 1px solid ${theme.palette.divider} !important;
+          box-shadow: ${theme.shadows[4]} !important;
+          padding: 8px 16px !important;
+        }
       `;
       
       // Remove existing style if it exists
@@ -215,7 +226,7 @@ const SubmitArticlePage = () => {
         }
       };
     }
-  }, []);
+  }, [theme]);
 
   // Enhanced format state checking including font properties
   const updateFormatStates = () => {
@@ -299,20 +310,17 @@ const SubmitArticlePage = () => {
     return () => document.removeEventListener('selectionchange', handleSelectionChange);
   }, []);
 
-  // Handle scroll for sticky toolbar
+  // Enhanced scroll handler for always-sticky toolbar
   useEffect(() => {
     const handleScroll = () => {
       if (editorContainerRef.current && toolbarRef.current) {
         const editorRect = editorContainerRef.current.getBoundingClientRect();
         const toolbarHeight = toolbarRef.current.offsetHeight;
-        const isSticky = editorRect.top <= 0 && 
-                         editorRect.bottom >= toolbarHeight;
-        
-        setIsToolbarSticky(isSticky);
       }
     };
 
     window.addEventListener('scroll', handleScroll);
+    handleScroll(); // Check initial state
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
@@ -320,11 +328,12 @@ const SubmitArticlePage = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Save cursor position
+  // Save cursor position with better range cloning
   const saveCursorPosition = () => {
     const selection = window.getSelection();
     if (selection.rangeCount > 0) {
-      return selection.getRangeAt(0);
+      const range = selection.getRangeAt(0);
+      return range.cloneRange();
     }
     return null;
   };
@@ -334,7 +343,11 @@ const SubmitArticlePage = () => {
     if (range) {
       const selection = window.getSelection();
       selection.removeAllRanges();
-      selection.addRange(range);
+      try {
+        selection.addRange(range);
+      } catch (error) {
+        console.warn('Failed to restore selection:', error);
+      }
     }
   };
 
@@ -483,7 +496,7 @@ const SubmitArticlePage = () => {
     return blockElement;
   };
 
-  // Enhanced format text function with font size and family support
+  // Enhanced format text function with fixed font size and family support
   const formatText = (command, value = null) => {
     if (!contentEditableRef.current) return;
     
@@ -579,30 +592,49 @@ const SubmitArticlePage = () => {
         if (!selection.rangeCount) return;
 
         const range = selection.getRangeAt(0);
-        const span = document.createElement('span');
-        span.style.fontSize = value;
-        span.innerHTML = '&#8203;'; // zero-width space
+        
+        if (range.collapsed) {
+          // No selection - create a span for future typing
+          const span = document.createElement('span');
+          span.style.fontSize = value;
+          span.innerHTML = '\u200B'; // zero-width space
 
-        range.insertNode(span);
+          range.insertNode(span);
 
-        // Move cursor inside the span
-        const newRange = document.createRange();
-        newRange.setStart(span, 1);
-        newRange.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(newRange);
+          // Move cursor inside the span
+          const newRange = document.createRange();
+          newRange.setStart(span, 1);
+          newRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        } else {
+          // Text is selected - wrap it in a span
+          const selectedContent = range.extractContents();
+          const span = document.createElement('span');
+          span.style.fontSize = value;
+          span.appendChild(selectedContent);
+          
+          range.insertNode(span);
+          
+          // Restore selection around the span content
+          const newRange = document.createRange();
+          newRange.selectNodeContents(span);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        }
 
-        } else if (command === 'fontName') {
-          // Manual span insertion to apply font family even with no selection
-          const selection = window.getSelection();
-          if (!selection.rangeCount) return;
+      } else if (command === 'fontName') {
+        const selection = window.getSelection();
+        if (!selection.rangeCount) return;
 
-          const range = selection.getRangeAt(0);
+        const range = selection.getRangeAt(0);
+        
+        if (range.collapsed) {
+          // No selection - create a span for future typing
           const span = document.createElement('span');
           span.style.fontFamily = value;
           span.innerHTML = '\u200B'; // zero-width space
 
-          range.deleteContents();
           range.insertNode(span);
 
           // Move cursor inside span
@@ -612,8 +644,22 @@ const SubmitArticlePage = () => {
 
           selection.removeAllRanges();
           selection.addRange(newRange);
+        } else {
+          // Text is selected - wrap it in a span
+          const selectedContent = range.extractContents();
+          const span = document.createElement('span');
+          span.style.fontFamily = value;
+          span.appendChild(selectedContent);
+          
+          range.insertNode(span);
+          
+          // Restore selection around the span content
+          const newRange = document.createRange();
+          newRange.selectNodeContents(span);
+          selection.removeAllRanges();
+          selection.addRange(newRange);
         }
-    else {
+      } else {
         // Regular formatting commands
         document.execCommand(command, false, value);
       }
@@ -625,33 +671,37 @@ const SubmitArticlePage = () => {
     updateFormatStates();
   };
 
-  // Handle font size change
+  // Handle font size change with proper selection handling
   const handleFontSizeChange = (size) => {
+    // Focus the editor first
+    contentEditableRef.current?.focus();
+    
+    // Restore saved range if available
     if (savedRange) {
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(savedRange);
+      restoreCursorPosition(savedRange);
+      setSavedRange(null);
     }
 
     formatText('fontSize', size);
-    setCurrentFontSize(size); // ensure UI updates immediately
+    setCurrentFontSize(size);
     setFontSizeMenuAnchor(null);
   };
 
-
-  // Handle font family change
+  // Handle font family change with proper selection handling
   const handleFontFamilyChange = (family) => {
+    // Focus the editor first
+    contentEditableRef.current?.focus();
+    
+    // Restore saved range if available
     if (savedRange) {
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(savedRange);
+      restoreCursorPosition(savedRange);
+      setSavedRange(null);
     }
 
     formatText('fontName', family);
-    setCurrentFontFamily(family.split(',')[0].replace(/['"]/g, '')); // UI update
+    setCurrentFontFamily(family.split(',')[0].replace(/['"]/g, ''));
     setFontFamilyMenuAnchor(null);
   };
-
 
   // Open link dialog
   const openLinkDialog = () => {
@@ -731,7 +781,7 @@ const SubmitArticlePage = () => {
         range.deleteContents();
         range.insertNode(p);
 
-        // ✅ Move cursor AFTER the <br> inside the new <p>
+        // Move cursor AFTER the <br> inside the new <p>
         const newRange = document.createRange();
         newRange.setStart(p, 1); // after the <br>
         newRange.collapse(true);
@@ -770,8 +820,9 @@ const SubmitArticlePage = () => {
     setTimeout(() => handleContentChange(), 10);
   };
 
+
   return (
-    <Layout>
+    <>
       <Helmet>
         <title>Submit Article | Cognara</title>
         <meta name="description" content="Submit your article to the Cognara community." />
@@ -1322,7 +1373,7 @@ const SubmitArticlePage = () => {
           </Box>
         </Menu>
       </Container>
-    </Layout>
+    </>
   );
 };
 
