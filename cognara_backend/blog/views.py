@@ -3,8 +3,9 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.core.mail import send_mail
-from .models import Article, Subscriber
+from .models import Article, NewsletterSubscriber
 from .serializers import ArticleSerializer, SubscriberSerializer
+
 
 class ArticleViewSet(viewsets.ModelViewSet):
     queryset = Article.objects.all().order_by('-created_at')
@@ -14,13 +15,13 @@ class ArticleViewSet(viewsets.ModelViewSet):
         queryset = Article.objects.all().order_by('-created_at')
         slug = self.request.query_params.get('slug', None)
         approved = self.request.query_params.get('approved', None)
-        
+
         if slug is not None:
             queryset = queryset.filter(slug=slug)
         if approved is not None:
             approved_bool = approved.lower() in ['true', '1', 'yes']
-            queryset = queryset.filter(approved=approved_bool)
-            
+            queryset = queryset.filter(is_approved=approved_bool)
+
         return queryset
 
     @action(detail=False, methods=['get'], url_path='by-slug/(?P<slug>[^/.]+)')
@@ -32,19 +33,28 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
+        """Admin approval & send newsletter to subscribers"""
         article = self.get_object()
-        article.approved = True
+        article.is_approved = True
+        article.is_published = True
         article.save()
-        subscribers = Subscriber.objects.all()
+
+        subscribers = NewsletterSubscriber.objects.all()
         for sub in subscribers:
             send_mail(
                 subject=f"New article on Cognara: {article.title}",
-                message=f"{article.content[:200]}...\nRead more: https://cognara.com/article/{article.slug}",
+                message=(
+                    f"{article.excerpt}\n\n"
+                    f"Read more: https://cognara.com/article/{article.slug}"
+                ),
                 from_email='noreply@cognara.com',
                 recipient_list=[sub.email],
+                fail_silently=True
             )
+
         return Response({'status': 'approved and notified'})
 
+
 class SubscriberViewSet(viewsets.ModelViewSet):
-    queryset = Subscriber.objects.all()
+    queryset = NewsletterSubscriber.objects.all()
     serializer_class = SubscriberSerializer

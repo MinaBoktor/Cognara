@@ -61,6 +61,13 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'your_email@example.com'
 EMAIL_HOST_PASSWORD = 'your_password'
 
+AUTH_USER_MODEL = 'blog.User'
+
+SUPABASE_URL = "https://rhwwleuleeqmngoesjos.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJod3dsZXVsZWVxbW5nb2Vzam9zIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTA5MTk4NywiZXhwIjoyMDY2NjY3OTg3fQ.ViRtG74m4sLPAB6BtaVqC7pA2gvkUTgh6ngt6sy8OkY"
+SUPABASE_BUCKET = "assets"
+
+
 ROOT_URLCONF = 'cognara_backend.urls'
 
 TEMPLATES = [
@@ -86,8 +93,14 @@ WSGI_APPLICATION = 'cognara_backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'postgres',
+        'USER': 'postgres.rhwwleuleeqmngoesjos',
+        'PASSWORD': 'YeNW_i+7*fiBrSZ',
+        'HOST': 'aws-0-eu-central-1.pooler.supabase.com',
+        'PORT': '5432',
+        'POOL_Mode': 'session',
+        'OPTIONS': { 'sslmode': 'require' },
     }
 }
 
