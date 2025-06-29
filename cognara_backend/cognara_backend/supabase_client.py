@@ -18,6 +18,3 @@ def upload_image_to_supabase(local_path: str, storage_path: str):
         # ✅ get the public URL
         public_url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(storage_path)
         return public_url
-
-def get_supabase():
-    return supabase

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Box, Typography, Button, Container, TextField, InputAdornment, IconButton } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
-import bg1 from '../assets/1.jpg';
+import bg1 from '../assets/Hero_background.jpg';
 
 const images = [{ url: bg1 }];
 

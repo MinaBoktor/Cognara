@@ -75,7 +75,7 @@ function App() {
             }}>
                 <Routes>
                   <Route path="/" element={<Layout showHero={true}><HomePage/></Layout>} />
-                  <Route path="/article/:slug" element={<ArticlePage />} />
+                  <Route path="/article/:id" element={<ArticlePage />} />
                   <Route path="/admin" element={<AdminDashboard />} />
                   <Route path="/login" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><LoginPage /></Layout>} />
                   <Route path="/about" element={<Layout showHero={false}><AboutPage /></Layout>} />
