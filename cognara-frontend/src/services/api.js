@@ -12,8 +12,8 @@ const apiClient = axios.create({
 // Articles API
 export const articlesAPI = {
   // Get all articles
-  getAll: () => apiClient.get('articles/'),
-  getById: (id) => apiClient.get(`articles/${id}/`),
+  getAll: () => apiClient.get('articles'),
+  getById: (id) => apiClient.get(`articles/${id}`),
   getComments: (id) => apiClient.get(`articles/${id}/comments`),
 };
 

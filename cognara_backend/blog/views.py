@@ -1,14 +1,19 @@
 from django.http import JsonResponse
 from supabase import create_client
 from django.views.decorators.http import require_GET
-from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework.decorators import api_view, permission_classes
+from datetime import datetime, timezone
+from .helper import *
+from django.contrib.auth.hashers import make_password
+from django.conf import settings
 
 
-SUPABASE_URL = "https://rhwwleuleeqmngoesjos.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJod3dsZXVsZWVxbW5nb2Vzam9zIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTA5MTk4NywiZXhwIjoyMDY2NjY3OTg3fQ.ViRtG74m4sLPAB6BtaVqC7pA2gvkUTgh6ngt6sy8OkY"
-SUPABASE_BUCKET = "assets"
+SUPABASE_URL = settings.SUPABASE_URL
+SUPABASE_KEY = settings.SUPABASE_KEY
+SUPABASE_BUCKET = settings.SUPABASE_BUCKET
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -68,3 +73,82 @@ def get_comments(request, article_id):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def check_user(request):
+    try:
+        if user_unique(request.data.get('username')):
+            return JsonResponse({'Found': 0}, status=200)
+        else:
+            return JsonResponse({'Found': 1}, status=200)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def check_email(request):
+    try:
+        if email_unique(request.data.get('email')):
+            return JsonResponse({'Found': 0}, status=200)
+        else:
+            return JsonResponse({'Found': 1}, status=200)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+def user_unique(username):
+    user = supabase.table('users').select('username').eq('username', username.lower()).execute()
+
+    if not user.data:
+        return True
+    else:
+        return False
+
+def email_unique(email):
+    email = supabase.table('users').select('username').eq('email', email.lower()).execute()
+
+    if not email.data:
+        return True
+    else:
+        return False
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def signup(request):
+    try:
+        # Extract and validate fields
+        username = request.data.get('username').lower()
+        email = request.data.get('email').lower()
+        password = request.data.get('password_hash')
+        firstname = request.data.get('first_name').lower()
+        lastname = request.data.get('last_name').lower()
+
+        # Check for required fields
+        if not username or not email or not password:
+            return JsonResponse({'error': 'username, email, and password are required.'}, status=401)
+
+        # Check password strength
+        if not is_strong_password(password):
+            return JsonResponse({
+                'error': 'Password must be at least 12 characters long and include at least one uppercase letter, one lowercase letter, one number, and one special character.'
+            }, status=400)
+
+        # Build user data
+        data = {
+            "username": username,
+            "email": email,
+            "password_hash": make_password(password),
+            "first_name": firstname,
+            "last_name": lastname,
+            "bio": "Learner at Cognara"
+        }
+
+        # Insert into Supabase
+        response = supabase.table("users").insert(data).execute()
+
+        return JsonResponse({'message': 'Signup successful'}, status=200)
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
