@@ -152,3 +152,83 @@ def signup(request):
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+def emailtoID(email):
+    try:
+        response = supabase.table('users').select('id').eq('email', email.lower()).execute()
+        user_data = response.data
+
+        if not user_data:
+            return False
+
+        id = user_data[0]['id']
+        return True
+    except:
+        return False
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def request_code(request):
+    try:
+        email = request.data.get('email')
+
+        id = emailtoID(email)
+        if not id:
+            return JsonResponse({'error': 'User not found'}, status=404)
+
+        code, _ = find_code(id)
+        if code != -1:
+            response = supabase.table("authtoken_token").delete().eq("user_id", id).execute()
+
+        code = generate_code()
+        if send_confirmation(code, email):
+            data = {
+                "user_id": id,
+                "key": code,
+                "created": datetime.now(timezone.utc).isoformat()
+            }
+
+            response = supabase.table("authtoken_token").insert(data).execute()
+            return JsonResponse({'message': 'Code was sent successfully'}, status=200)
+        else:
+            return JsonResponse({'error': "Failed to send Email"}, status=500)
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+def find_code(id):
+    try:
+        response = supabase.table('authtoken_token').select('key, created').eq('user_id', id).execute()
+        data = response.data
+
+        if not data:
+            return JsonResponse({'error': 'User not found'}, status=404)
+
+        code = data[0]['key']
+        created = data[0]['created']
+
+        created = datetime.fromisoformat(created)
+        difference = (datetime.now(timezone.utc) - created).total_seconds() / 60.0
+        return code, difference
+    except Exception as e:
+        print(e)
+        return -1, -1
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_code(request):
+    try:
+        email = request.data.get('email')
+        code = request.data.get('code')
+        id = emailtoID(email)
+        if not id:
+            return JsonResponse({'error': 'User not found'}, status=404)
+
+        code, diff = find_code(id)
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

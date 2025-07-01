@@ -89,6 +89,7 @@ function App() {
                   <Route path="/privacy" element={<NotFoundPage />} /> 
                   <Route path="/terms" element={<NotFoundPage />} />
                   <Route path="/forget" element={<NotFoundPage />} />
+                  <Route path="/confirm-email" element={<NotFoundPage />} />
 
                   <Route path="*" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><NotFoundPage /></Layout>} />
                 </Routes>
