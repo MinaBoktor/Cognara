@@ -15,12 +15,17 @@ import {
   Alert,
   Collapse,
   Grid,
-  useMediaQuery
+  useMediaQuery,
+  CircularProgress
 } from '@mui/material';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout/Layout';
 import { Helmet } from 'react-helmet';
-import { Google, Facebook, CheckCircle, Error } from '@mui/icons-material';
+// Fixed imports - import each icon separately
+import GoogleIcon from '@mui/icons-material/Google';
+import FacebookIcon from '@mui/icons-material/Facebook';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
 
 const SignUpPage = () => {
   const theme = useTheme();
@@ -43,6 +48,8 @@ const SignUpPage = () => {
   const [submitError, setSubmitError] = useState('');
   const [submitSuccess, setSubmitSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSocialLoading, setIsSocialLoading] = useState(false);
+  const [socialProvider, setSocialProvider] = useState('');
   const containerRef = useRef(null);
   const navigate = useNavigate();
 
@@ -67,6 +74,56 @@ const SignUpPage = () => {
         observer.unobserve(containerRef.current);
       }
     };
+  }, []);
+
+  // Load Google SDK
+  useEffect(() => {
+    const loadGoogleSDK = () => {
+      if (window.google) return;
+      
+      const script = document.createElement('script');
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        if (window.google) {
+          window.google.accounts.id.initialize({
+            client_id: process.env.REACT_APP_GOOGLE_CLIENT_ID,
+            callback: handleGoogleResponse,
+            auto_select: false,
+            cancel_on_tap_outside: true,
+          });
+        }
+      };
+      document.head.appendChild(script);
+    };
+
+    loadGoogleSDK();
+  }, []);
+
+  // Load Facebook SDK
+  useEffect(() => {
+    const loadFacebookSDK = () => {
+      if (window.FB) return;
+
+      window.fbAsyncInit = function() {
+        window.FB.init({
+          appId: process.env.REACT_APP_FACEBOOK_APP_ID,
+          cookie: true,
+          xfbml: true,
+          version: 'v18.0'
+        });
+      };
+
+      const script = document.createElement('script');
+      script.async = true;
+      script.defer = true;
+      script.crossOrigin = 'anonymous';
+      script.src = 'https://connect.facebook.net/en_US/sdk.js';
+      document.head.appendChild(script);
+    };
+
+    loadFacebookSDK();
   }, []);
 
   const validatePassword = (password) => {
@@ -201,7 +258,8 @@ const SignUpPage = () => {
     setIsSubmitting(true);
     
     try {
-      const response = await fetch('http://127.0.0.1:8000/signup', {
+      // First make the signup request
+      const signupResponse = await fetch('http://127.0.0.1:8000/signup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -215,13 +273,28 @@ const SignUpPage = () => {
         })
       });
 
-      const responseData = await response.json();
+      const signupResponseData = await signupResponse.json();
 
-      if (!response.ok) {
-        throw new Error(responseData.detail || 'Signup failed');
+      if (!signupResponse.ok) {
+        throw new Error(signupResponseData.detail || 'Signup failed');
       }
 
-      // Redirect to confirmation page
+      // Then request the verification code
+      const codeResponse = await fetch('http://127.0.0.1:8000/coderequest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email })
+      });
+
+      const codeResponseData = await codeResponse.json();
+
+      if (!codeResponse.ok || codeResponseData.message !== 'Code was sent successfully') {
+        throw new Error(codeResponseData.detail || 'Failed to send verification code');
+      }
+
+      // Only redirect if both requests were successful
       navigate('/confirm-email', { state: { email } });
     } catch (error) {
       console.error('Signup error:', error);
@@ -231,15 +304,140 @@ const SignUpPage = () => {
     }
   };
 
-  const handleSocialLogin = (provider) => {
-    // TODO: Implement social login logic
-    alert(`${provider} sign up not implemented yet.`);
+  // Handle Google Sign-In Response
+  const handleGoogleResponse = async (response) => {
+    setIsSocialLoading(true);
+    setSocialProvider('Google');
+    setSubmitError('');
+
+    try {
+      // Send the credential to your backend
+      const backendResponse = await fetch('http://127.0.0.1:8000/auth/google', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          credential: response.credential
+        })
+      });
+
+      const data = await backendResponse.json();
+
+      if (!backendResponse.ok) {
+        throw new Error(data.detail || 'Google authentication failed');
+      }
+
+      // Handle successful authentication
+      if (data.status == "success") {
+        // New user - redirect to email confirmation if needed
+        navigate('/userhomepage', { state: { email: data.email } });
+      }
+    } catch (error) {
+      console.error('Google auth error:', error);
+      setSubmitError(error.message || 'Google authentication failed');
+    } finally {
+      setIsSocialLoading(false);
+      setSocialProvider('');
+    }
+  };
+
+  // Handle Facebook Sign-In
+  const handleFacebookLogin = () => {
+    if (!window.FB) {
+      setSubmitError('Facebook SDK not loaded. Please try again.');
+      return;
+    }
+
+    setIsSocialLoading(true);
+    setSocialProvider('Facebook');
+    setSubmitError('');
+
+    window.FB.login(async (response) => {
+      if (response.authResponse) {
+        try {
+          // Get user info from Facebook
+          window.FB.api('/me', { fields: 'name,email,first_name,last_name' }, async (userInfo) => {
+            // Send to your backend
+            const backendResponse = await fetch('http://127.0.0.1:8000/auth/facebook', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                access_token: response.authResponse.accessToken,
+                user_id: response.authResponse.userID,
+                user_info: userInfo
+              })
+            });
+
+            const data = await backendResponse.json();
+
+            if (!backendResponse.ok) {
+              throw new Error(data.detail || 'Facebook authentication failed');
+            }
+
+            // Handle successful authentication
+            if (data.is_new_user) {
+              // New user - redirect to email confirmation if needed
+              navigate('/confirm-email', { state: { email: data.email } });
+            } else {
+              // Existing user - redirect to dashboard
+              navigate('/userhomepage');
+            }
+          });
+        } catch (error) {
+          console.error('Facebook auth error:', error);
+          setSubmitError(error.message || 'Facebook authentication failed');
+        } finally {
+          setIsSocialLoading(false);
+          setSocialProvider('');
+        }
+      } else {
+        setIsSocialLoading(false);
+        setSocialProvider('');
+        setSubmitError('Facebook login was cancelled');
+      }
+    }, { scope: 'email' });
+  };
+
+  // Handle Google Sign-In Button Click
+  const handleGoogleLogin = () => {
+    if (!window.google) {
+      setSubmitError('Google SDK not loaded. Please try again.');
+      return;
+    }
+
+    setIsSocialLoading(true);
+    setSocialProvider('Google');
+    setSubmitError('');
+
+    try {
+      window.google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          // Fallback to popup if prompt is not displayed
+          window.google.accounts.id.renderButton(
+            document.getElementById('google-signin-button'),
+            { 
+              theme: 'outline', 
+              size: 'large',
+              width: '100%'
+            }
+          );
+        }
+      });
+    } catch (error) {
+      console.error('Google login error:', error);
+      setSubmitError('Failed to initialize Google login');
+      setIsSocialLoading(false);
+      setSocialProvider('');
+    }
   };
 
   const getFieldEndAdornment = (isValid, isChecking, hasError) => {
     if (isChecking) return null;
-    if (hasError) return <Error color="error" />;
-    if (isValid) return <CheckCircle color="success" />;
+    if (hasError) return <ErrorIcon color="error" />;
+    if (isValid) return <CheckCircleIcon color="success" />;
     return null;
   };
 
@@ -512,7 +710,7 @@ return (
                         type="submit"
                         fullWidth
                         variant="contained"
-                        disabled={isSubmitting || isCheckingUsername || isCheckingEmail}
+                        disabled={isSubmitting || isCheckingUsername || isCheckingEmail || isSocialLoading}
                         sx={{ 
                           mb: 3,
                           py: 1.5,
@@ -613,11 +811,17 @@ return (
                     </Typography>
 
                     <Stack spacing={2} sx={{ width: '100%', maxWidth: { xs: '100%', md: '90%' } }}>
+                      {/* Google Sign-In Button */}
                       <Button
-                        onClick={() => handleSocialLogin('Google')}
+                        onClick={handleGoogleLogin}
                         variant="outlined"
-                        startIcon={<Google />}
+                        startIcon={
+                          isSocialLoading && socialProvider === 'Google' ? 
+                            <CircularProgress size={20} /> : 
+                            <GoogleIcon />
+                        }
                         size="large"
+                        disabled={isSocialLoading}
                         sx={{
                           py: 1.5,
                           borderRadius: 2,
@@ -631,17 +835,29 @@ return (
                             transform: 'translateY(-1px)',
                             boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                           },
+                          '&:disabled': {
+                            opacity: 0.7
+                          },
                           transition: 'all 0.2s ease'
                         }}
                       >
-                        Continue with Google
+                        {isSocialLoading && socialProvider === 'Google' ? 
+                          'Connecting...' : 
+                          'Continue with Google'
+                        }
                       </Button>
                       
+                      {/* Facebook Sign-In Button */}
                       <Button
-                        onClick={() => handleSocialLogin('Facebook')}
+                        onClick={handleFacebookLogin}
                         variant="outlined"
-                        startIcon={<Facebook />}
+                        startIcon={
+                          isSocialLoading && socialProvider === 'Facebook' ? 
+                            <CircularProgress size={20} /> : 
+                            <FacebookIcon />
+                        }
                         size="large"
+                        disabled={isSocialLoading}
                         sx={{
                           py: 1.5,
                           borderRadius: 2,
@@ -655,11 +871,20 @@ return (
                             transform: 'translateY(-1px)',
                             boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                           },
+                          '&:disabled': {
+                            opacity: 0.7
+                          },
                           transition: 'all 0.2s ease'
                         }}
                       >
-                        Continue with Facebook
+                        {isSocialLoading && socialProvider === 'Facebook' ? 
+                          'Connecting...' : 
+                          'Continue with Facebook'
+                        }
                       </Button>
+
+                      {/* Hidden Google Sign-In Button for fallback */}
+                      <div id="google-signin-button" style={{ display: 'none' }}></div>
                     </Stack>
                   </Box>
                 </Grid>
@@ -673,3 +898,4 @@ return (
 };
 
 export default SignUpPage;
+

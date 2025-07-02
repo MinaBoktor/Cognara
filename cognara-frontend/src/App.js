@@ -9,6 +9,8 @@ import { Box } from '@mui/material';
 
 import Layout from './components/Layout/Layout';
 import HomePage from './pages/HomePage';
+import ForgetPassword from './pages/ForgetPassword';
+import ConfirmEmail from './pages/ConfirmEmail';
 import ArticlePage from './pages/ArticlePage';
 import SubmitArticlePage from './pages/SubmitArticlePage';
 import AdminDashboard from './pages/AdminDashboard';
@@ -89,7 +91,8 @@ function App() {
                   <Route path="/privacy" element={<NotFoundPage />} /> 
                   <Route path="/terms" element={<NotFoundPage />} />
                   <Route path="/forget" element={<NotFoundPage />} />
-                  <Route path="/confirm-email" element={<NotFoundPage />} />
+                  <Route path="/confirm-email" element={<ConfirmEmail />} />
+                  <Route path="/forgot-password" element={<ForgetPassword />} />
 
                   <Route path="*" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><NotFoundPage /></Layout>} />
                 </Routes>

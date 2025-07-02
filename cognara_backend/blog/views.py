@@ -7,8 +7,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.decorators import api_view, permission_classes
 from datetime import datetime, timezone
 from .helper import *
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import make_password, check_password
 from django.conf import settings
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 
 SUPABASE_URL = settings.SUPABASE_URL
@@ -163,15 +165,16 @@ def emailtoID(email):
             return False
 
         id = user_data[0]['id']
-        return True
+        return id
     except:
-        return False
+        return None
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def request_code(request):
     try:
+        print(request)
         email = request.data.get('email')
 
         id = emailtoID(email)
@@ -205,7 +208,7 @@ def find_code(id):
         data = response.data
 
         if not data:
-            return JsonResponse({'error': 'User not found'}, status=404)
+            return -1, 0
 
         code = data[0]['key']
         created = data[0]['created']
@@ -223,12 +226,105 @@ def find_code(id):
 def verify_code(request):
     try:
         email = request.data.get('email')
-        code = request.data.get('code')
+        recieved_code = request.data.get('code')
         id = emailtoID(email)
         if not id:
-            return JsonResponse({'error': 'User not found'}, status=404)
+            return JsonResponse({'error': 'User not found'}, status=400)
 
-        code, diff = find_code(id)
+        code, diff = find_code(int(id))
+        if diff > 10:
+            return JsonResponse({'error': 'The Code has Expired'}, status=200)
+        if int(recieved_code) == int(code):
+            response = supabase.table("users").update({"email_verified": "True"}).eq("id", id).execute()
+            return JsonResponse({'status': '1'}, status=200)
+        else:
+            return JsonResponse({'status': '0', "recieved_code": recieved_code, "code":code}, status=200)
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def google_auth(request):
+    credential = request.data.get('credential')
+    if not credential:
+        return Response({'detail': 'Missing credential'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        # Verify the token
+        idinfo = id_token.verify_oauth2_token(credential, google_requests.Request(), settings.GOOGLE_CLIENT_ID)
+
+        # Get user info
+        email = idinfo['email']
+        first_name = idinfo.get('given_name', '')
+        last_name = idinfo.get('family_name', '')
+        picture = idinfo.get('picture', '')
+
+        # Check if user exists
+        if email_unique(email):
+            # Build user data
+            data = {
+                "email": email,
+                "first_name": first_name,
+                "last_name": last_name,
+                "bio": "Learner at Cognara",
+                "email_verified": "True",
+                "auth_provider": "Google",
+            }
+
+            # Insert into Supabase
+            response = supabase.table("users").insert(data).execute()
+
+            return JsonResponse({'status': 'success', "is_new": '1', "email": email}, status=200)
+        else:
+            data = {
+                "first_name": first_name,
+                "last_name": last_name,
+                "email_verified": "True",
+                "auth_provider": "Goolge",
+            }
+
+            response = supabase.table("users").update(data).eq("email", email).execute()
+            return JsonResponse({'status': 'success', "is_new": '0', "email": email}, 200)
+    except ValueError as e:
+        # Invalid token
+        return Response({'detail': 'Invalid token'}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login(request):
+    try:
+        email = request.data.get('email').lower()
+        password = request.data.get('password_hash')
+
+        response = supabase.table('users').select('password_hash').eq('email', email).execute()
+        user_data = response.data
+        if not user_data:
+            return JsonResponse({'status': '0'}, status=200)
+        hashed_password = user_data[0]['password_hash']
+        if check_password(password, hashed_password):
+            return JsonResponse({'status': '1'}, status=200)
+        else:
+            return JsonResponse({'status': '0'}, status=200)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def forgetpass(request):
+    try:
+        password = request.data.get('password')
+        email = request.data.get('email').lower()
+
+        data = {"password_hash": make_password(password)}
+        response = supabase.table('users').update(data).eq('email', email).execute()
+        user_data = response.data
+        if not user_data:
+            return JsonResponse({'status': '0'}, status=200)
+        return JsonResponse({'status': '1'}, status=200)
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
