@@ -2,6 +2,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from django.conf import settings
+from django.http import JsonResponse
 import re
 import random
 import os
@@ -70,9 +71,20 @@ def is_strong_password(password):
 def generate_code():
     return str(random.randint(100000, 999999))
 
+
+def require_frontend_token(view_func):
+    def wrapped_view(request, *args, **kwargs):
+        token = request.headers.get('App-Token')
+        if token != settings.FRONTEND_API_TOKEN:
+            return JsonResponse({'error': 'Unauthorized access'}, status=403)
+        return view_func(request, *args, **kwargs)
+    return wrapped_view
+
+
 subjects = {"confirmation": "Your Cognara Confirmation Code"
 
              }
+
 
 if __name__ == "__main__":
     send_email("Test", "This is a test email sent from Python using Outlook SMTP.", "mina.maged.pe@gmail.com")

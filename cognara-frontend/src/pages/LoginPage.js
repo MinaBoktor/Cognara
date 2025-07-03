@@ -25,6 +25,8 @@ import GoogleIcon from '@mui/icons-material/Google';
 import FacebookIcon from '@mui/icons-material/Facebook';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
+import { authAPI } from '../services/api';
+
 
 const LoginPage = () => {
   const theme = useTheme();
@@ -150,22 +152,9 @@ const LoginPage = () => {
     setIsSubmitting(true);
     
     try {
-      const response = await fetch('http://127.0.0.1:8000/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email.toLowerCase(),
-          password_hash: password
-        })
-      });
+      const response = await authAPI.login(email, password);
 
-      const responseData = await response.json();
-
-      if (!response.ok) {
-        throw new Error(responseData.error || 'Login failed');
-      }
+      const responseData = response.data;
 
       // Handle response based on status
       if (responseData.status === '1') {
@@ -193,15 +182,7 @@ const LoginPage = () => {
     setSubmitError('');
 
     try {
-      const backendResponse = await fetch('http://127.0.0.1:8000/auth/google', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          credential: response.credential
-        })
-      });
+      const backendResponse = await authAPI.googleAuth(response.credential);
 
       const data = await backendResponse.json();
 
@@ -235,17 +216,7 @@ const LoginPage = () => {
       if (response.authResponse) {
         try {
           window.FB.api('/me', { fields: 'name,email,first_name,last_name' }, async (userInfo) => {
-            const backendResponse = await fetch('http://127.0.0.1:8000/auth/facebook', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                access_token: response.authResponse.accessToken,
-                user_id: response.authResponse.userID,
-                user_info: userInfo
-              })
-            });
+            const backendResponse = await authAPI.facebookAuth(response.authResponse.accessToken, response.authResponse.userID, userInfo);
 
             const data = await backendResponse.json();
 

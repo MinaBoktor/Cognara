@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path('get_csrf_token', views.get_csrf_token, name="get_csrf_token"),
     path('articles', views.get_articles, name='get_articles'),
     path('articles/<article_id>', views.get_article, name='get_article'),
     path('articles/<article_id>/comments', views.get_comments, name='get_comments'),
@@ -12,5 +13,6 @@ urlpatterns = [
     path('coderequest', views.request_code, name="request_code"),
     path('verifycode', views.verify_code, name="verify_code"),
     path('auth/google', views.google_auth, name="google_auth"),
-    path('forgetpass', views.forgetpass, name="forgetpass")
+    path('forgetpass', views.forgetpass, name="forgetpass"),
+    path('newsletter/subscribe', views.newsletter_subscription, name="newsletter_subscription")
 ]

@@ -1,6 +1,6 @@
 // src/App.js (Updated)
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -8,6 +8,7 @@ import { StyledEngineProvider } from '@mui/material/styles';
 import { Box } from '@mui/material';
 
 import Layout from './components/Layout/Layout';
+import ScrollTop from './components/ScrollTop';
 import HomePage from './pages/HomePage';
 import ForgetPassword from './pages/ForgetPassword';
 import ConfirmEmail from './pages/ConfirmEmail';
@@ -19,7 +20,8 @@ import SignUpPage from './pages/SignUpPage'; // <-- Import
 import NotFoundPage from './pages/NotFoundPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
-import NewsletterSignup from './components/Newsletter/NewsletterSignup';
+import Newsletter from './components/Newsletter';
+import { fetchCSRFToken } from './services/api';
 
 
 const theme = createTheme({
@@ -65,11 +67,18 @@ const theme = createTheme({
 
 
 function App() {
+
+  useEffect(() => {
+      fetchCSRFToken();
+    }, []);
+
+
   return (
     <StyledEngineProvider injectFirst>
       <ThemeProvider theme={theme}>
         <CssBaseline />
           <Router>
+            <ScrollTop />
             <Box sx={{ 
               position: 'relative',
               backgroundColor: 'background.default',
@@ -82,7 +91,7 @@ function App() {
                   <Route path="/login" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><LoginPage /></Layout>} />
                   <Route path="/about" element={<Layout showHero={false}><AboutPage /></Layout>} />
                   <Route path="/contact" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><ContactPage /></Layout>} />
-                  <Route path="/newsletter" element={<Layout showHero={false}><NewsletterSignup /></Layout>} />
+                  <Route path="/newsletter" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><Newsletter /></Layout>} />
 
 
                   <Route path="/signup" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><SignUpPage /></Layout>} />

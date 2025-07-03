@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Container } from '@mui/material';
 import Header from './Header';
 import Footer from './Footer';
-import NewsletterSignup from '../Newsletter/NewsletterSignup';
+import Newsletter from '../Newsletter';
 import HeroSection from '../HeroSection';
 
 const Layout = ({ children, showHero = false, showHeader = true, showNewsletter = true }) => {
@@ -35,7 +35,7 @@ const Layout = ({ children, showHero = false, showHeader = true, showNewsletter 
       >
         {children}
       </Container>
-      {showNewsletter && <NewsletterSignup />}
+      {showNewsletter && <Newsletter />}
       <Footer />
     </Box>
   );

@@ -16,6 +16,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { Email, CheckCircle, AccessTime, Refresh } from '@mui/icons-material';
+import { passwordAPI, emailAPI, userAPI } from '../services/api';
 
 const ForgotPassword = () => {
   const theme = useTheme();
@@ -138,32 +139,20 @@ const ForgotPassword = () => {
 
     try {
       // Check if email exists
-      const checkResponse = await fetch('http://127.0.0.1:8000/emailcheck', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email })
-      });
+      const checkResponse = await userAPI.checkEmail(email);
 
-      const checkData = await checkResponse.json();
-      
+      const checkData = checkResponse.data;
+
       if (checkData.Found === 0) {
         throw new Error('Email not found. Please check your email address.');
       }
 
       // Send verification code
-      const codeResponse = await fetch('http://127.0.0.1:8000/coderequest', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email })
-      });
+      const codeResponse = await emailAPI.requestCode(email);
 
-      const codeData = await codeResponse.json();
+      const codeData = codeResponse.data;
 
-      if (!codeResponse.ok || codeData.message !== 'Code was sent successfully') {
+      if (codeData.message !== 'Code was sent successfully') {
         throw new Error('Failed to send verification code. Please try again.');
       }
 
@@ -190,18 +179,9 @@ const ForgotPassword = () => {
     setSubmitError('');
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/verifycode', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email,
-          code: code
-        })
-      });
+      const response = await emailAPI.verifyCode(email, code);
 
-      const data = await response.json();
+      const data = response.data;
 
       if (data.error === "The Code has Expired") {
         throw new Error('Your verification code has expired. Please request a new one.');
@@ -225,15 +205,9 @@ const ForgotPassword = () => {
     setSubmitError('');
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/coderequest', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email })
-      });
+      const response = await emailAPI.requestCode(email);
 
-      const data = await response.json();
+      const data = response.data;
 
       if (data.message !== 'Code was sent successfully') {
         throw new Error('Failed to send verification code. Please try again.');
@@ -272,18 +246,9 @@ const ForgotPassword = () => {
     setSubmitError('');
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/forgetpass', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email,
-          password: password
-        })
-      });
+      const response = await passwordAPI.resetPassword(email, password);
 
-      const data = await response.json();
+      const data = response.data;
 
       if (data.status !== "1") {
         throw new Error(data.message || 'Password reset failed. Please try again.');

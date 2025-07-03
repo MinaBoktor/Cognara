@@ -11,6 +11,7 @@ from django.contrib.auth.hashers import make_password, check_password
 from django.conf import settings
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 
 SUPABASE_URL = settings.SUPABASE_URL
@@ -20,6 +21,13 @@ SUPABASE_BUCKET = settings.SUPABASE_BUCKET
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
+@ensure_csrf_cookie
+def get_csrf_token(request):
+    return JsonResponse({'message': 'CSRF cookie set'})
+
+
+@require_frontend_token
+@api_view(['GET'])
 def get_articles(request):
     try:
         # This will raise an exception if Supabase fails
@@ -31,7 +39,8 @@ def get_articles(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@require_GET
+@require_frontend_token
+@api_view(['GET'])
 def get_article(request, article_id):
     try:
         response = supabase.table('articles').select('*').eq('id', article_id).execute()
@@ -42,6 +51,7 @@ def get_article(request, article_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+@require_frontend_token
 @api_view(['GET'])
 def get_comments(request, article_id):
     try:
@@ -75,6 +85,8 @@ def get_comments(request, article_id):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+
+@require_frontend_token
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def check_user(request):
@@ -87,6 +99,7 @@ def check_user(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+@require_frontend_token
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def check_email(request):
@@ -116,6 +129,7 @@ def email_unique(email):
         return False
 
 
+@require_frontend_token
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def signup(request):
@@ -170,6 +184,7 @@ def emailtoID(email):
         return None
 
 
+@require_frontend_token
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def request_code(request):
@@ -221,6 +236,7 @@ def find_code(id):
         return -1, -1
 
 
+@require_frontend_token
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def verify_code(request):
@@ -244,6 +260,7 @@ def verify_code(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+@require_frontend_token
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def google_auth(request):
@@ -292,6 +309,7 @@ def google_auth(request):
         return Response({'detail': 'Invalid token'}, status=400)
 
 
+@require_frontend_token
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login(request):
@@ -312,6 +330,7 @@ def login(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+@require_frontend_token
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def forgetpass(request):
@@ -325,6 +344,35 @@ def forgetpass(request):
         if not user_data:
             return JsonResponse({'status': '0'}, status=200)
         return JsonResponse({'status': '1'}, status=200)
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@require_frontend_token
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def newsletter_subscription(request):
+    try:
+        email = request.data.get('email', '')["email"]
+
+        if not email:
+            return JsonResponse({'error': 'Email is required'}, status=400)
+
+        email = email.lower()
+
+        data = {
+            "email": email,
+            "is_active": "True",
+            "source": "website"
+                }
+        response = supabase.table('newsletter_subscribers').select("*").eq('email', email).execute()
+        if response.data:
+            return JsonResponse({'status': 'already registered'}, status=200)
+
+        response = supabase.table('newsletter_subscribers').insert(data).execute()
+        print(response.data)
+        return JsonResponse({'status': 'success'}, status=200)
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)

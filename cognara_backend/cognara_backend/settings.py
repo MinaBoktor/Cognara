@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import os
 from decouple import config, Csv
+from corsheaders.defaults import default_headers
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -33,6 +35,7 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = [
+    
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -57,8 +60,25 @@ MIDDLEWARE = [
 ]
 
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS_ALLOW_ALL_ORIGINS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+]
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+]
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'App-Token',  # Your custom header
+    'X-CSRFToken',
+]
+
 CORS_ALLOW_CREDENTIALS = True
+
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
 
 # REST Framework settings
 REST_FRAMEWORK = {
@@ -84,7 +104,7 @@ DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 
 # Frontend URL for email links
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://cognara.com')
-
+FRONTEND_API_TOKEN = config('FRONTEND_API_TOKEN')
 
 SUPABASE_URL = config('SUPABASE_URL')
 SUPABASE_KEY = config('SUPABASE_KEY')

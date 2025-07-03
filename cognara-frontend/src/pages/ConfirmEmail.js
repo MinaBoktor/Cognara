@@ -16,6 +16,7 @@ import {
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { Email, CheckCircle, AccessTime, Refresh } from '@mui/icons-material';
+import { authAPI, userAPI, emailAPI } from '../services/api';
 
 const ConfirmEmail = () => {
   const theme = useTheme();
@@ -126,18 +127,9 @@ const ConfirmEmail = () => {
     setSubmitSuccess('');
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/verifycode', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email,
-          code: code
-        })
-      });
+      const response = await emailAPI.verifyCode(email, code);
 
-      const data = await response.json();
+      const data = response.data;
 
       if (data.error === "The Code has Expired") {
         setSubmitError('Your verification code has expired. Requesting a new code...');
@@ -174,17 +166,9 @@ const ConfirmEmail = () => {
     setSubmitSuccess('');
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/coderequest', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: email
-        })
-      });
+      const response = await emailAPI.requestCode(email);
 
-      const data = await response.json();
+      const data = response.data;
 
       if (data.message === 'Code was sent successfully') {
         setSubmitSuccess('A new verification code has been sent to your email');

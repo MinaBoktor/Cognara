@@ -26,6 +26,8 @@ import GoogleIcon from '@mui/icons-material/Google';
 import FacebookIcon from '@mui/icons-material/Facebook';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
+import { authAPI, userAPI, emailAPI } from '../services/api';
+
 
 const SignUpPage = () => {
   const theme = useTheme();
@@ -171,16 +173,10 @@ const SignUpPage = () => {
     setUsernameValid(false);
     
     try {
-      const response = await fetch('http://127.0.0.1:8000/usercheck', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username })
-      });
-      
-      const data = await response.json();
-      console.log(data);
+      const response = await userAPI.checkUsername(username);
+
+      const data = response.data;
+
       if (data.Found > 0) {
         setUsernameError('Username is already taken');
         setUsernameValid(false);
@@ -210,15 +206,9 @@ const SignUpPage = () => {
     setEmailValid(false);
     
     try {
-      const response = await fetch('http://127.0.0.1:8000/emailcheck', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email })
-      });
+      const response = await userAPI.checkEmail(email);
       
-      const data = await response.json();
+      const data = response.data;
       
       if (data.Found > 0) {
         setEmailError('Email is already registered');
@@ -259,38 +249,16 @@ const SignUpPage = () => {
     
     try {
       // First make the signup request
-      const signupResponse = await fetch('http://127.0.0.1:8000/signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username,
-          email,
-          password_hash: password,
-          first_name: firstName,
-          last_name: lastName,
-        })
-      });
+      const signupResponse = await userAPI.signup({username, email, password, firstName, lastName});
 
-      const signupResponseData = await signupResponse.json();
-
-      if (!signupResponse.ok) {
-        throw new Error(signupResponseData.detail || 'Signup failed');
-      }
+      const signupResponseData = signupResponse.data;
 
       // Then request the verification code
-      const codeResponse = await fetch('http://127.0.0.1:8000/coderequest', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email })
-      });
+      const codeResponse = await emailAPI.requestCode(email);
 
-      const codeResponseData = await codeResponse.json();
+      const codeResponseData = codeResponse.data;
 
-      if (!codeResponse.ok || codeResponseData.message !== 'Code was sent successfully') {
+      if (codeResponseData.message !== 'Code was sent successfully') {
         throw new Error(codeResponseData.detail || 'Failed to send verification code');
       }
 
@@ -312,21 +280,9 @@ const SignUpPage = () => {
 
     try {
       // Send the credential to your backend
-      const backendResponse = await fetch('http://127.0.0.1:8000/auth/google', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          credential: response.credential
-        })
-      });
+      const backendResponse = await authAPI.googleAuth(response.credential);
 
-      const data = await backendResponse.json();
-
-      if (!backendResponse.ok) {
-        throw new Error(data.detail || 'Google authentication failed');
-      }
+      const data = backendResponse.data;
 
       // Handle successful authentication
       if (data.status == "success") {
@@ -359,23 +315,9 @@ const SignUpPage = () => {
           // Get user info from Facebook
           window.FB.api('/me', { fields: 'name,email,first_name,last_name' }, async (userInfo) => {
             // Send to your backend
-            const backendResponse = await fetch('http://127.0.0.1:8000/auth/facebook', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                access_token: response.authResponse.accessToken,
-                user_id: response.authResponse.userID,
-                user_info: userInfo
-              })
-            });
+            const backendResponse = await authAPI.facebookAuth(response.authResponse.accessToken, response.authResponse.userID, userInfo);
 
-            const data = await backendResponse.json();
-
-            if (!backendResponse.ok) {
-              throw new Error(data.detail || 'Facebook authentication failed');
-            }
+            const data = backendResponse.data;
 
             // Handle successful authentication
             if (data.is_new_user) {
