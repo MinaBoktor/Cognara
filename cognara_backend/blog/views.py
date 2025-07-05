@@ -2,6 +2,7 @@ from django.http import JsonResponse
 from supabase import create_client
 from django.views.decorators.http import require_GET
 from rest_framework.response import Response
+from functools import wraps
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.decorators import api_view, permission_classes
@@ -317,17 +318,58 @@ def login(request):
         email = request.data.get('email').lower()
         password = request.data.get('password_hash')
 
-        response = supabase.table('users').select('password_hash').eq('email', email).execute()
+        response = supabase.table('users').select('*').eq('email', email).execute()
         user_data = response.data
         if not user_data:
             return JsonResponse({'status': '0'}, status=200)
         hashed_password = user_data[0]['password_hash']
         if check_password(password, hashed_password):
+            
+            request.session['id'] = user_data[0]['id']
+            request.session['email'] = user_data[0]['email']
+            request.session['first_name'] = user_data[0]['first_name']
+            request.session['last_name'] = user_data[0]['last_name']
+            request.session['bio'] = user_data[0]['bio']
+            request.session['email_verified'] = user_data[0]['email_verified']
             return JsonResponse({'status': '1'}, status=200)
         else:
             return JsonResponse({'status': '0'}, status=200)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+@require_frontend_token
+def require_session_login(view_func):
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        if 'id' not in request.session:
+            return Response({'error': 'Authentication required'}, status=401)
+        return view_func(request, *args, **kwargs)
+    return _wrapped_view
+
+
+@require_frontend_token
+@api_view(['POST'])
+def logout(request):
+    request.session.flush()
+    return JsonResponse({'status': 'logged out'})
+
+
+@require_frontend_token
+@api_view(['GET'])
+def auth_status(request):
+    if 'id' in request.session:
+        return Response({
+            'authenticated': True,
+            'id': request.session['id'],
+            'email': request.session['email'],
+            'first_name': request.session['first_name'],
+            'last_name' : request.session['last_name'],
+            'bio': request.session['bio'],
+            'email_verified': request.session['email_verified']
+        })
+    else:
+        return Response({'authenticated': False})
 
 
 @require_frontend_token

@@ -77,6 +77,7 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 
 CORS_ALLOW_CREDENTIALS = True
 
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 SESSION_COOKIE_SAMESITE = 'Lax'
 CSRF_COOKIE_SAMESITE = 'Lax'
 
@@ -136,7 +137,10 @@ WSGI_APPLICATION = 'cognara_backend.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / "db.sqlite3",
+    }
 }
 
 

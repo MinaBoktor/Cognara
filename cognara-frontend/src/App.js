@@ -1,4 +1,4 @@
-// src/App.js (Updated)
+
 
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
@@ -9,6 +9,8 @@ import { Box } from '@mui/material';
 
 import Layout from './components/Layout/Layout';
 import ScrollTop from './components/ScrollTop';
+import ProtectedRoute from './components/ProtectedRoute';
+import GuestOnlyRoute from './components/GuestOnlyRoute';
 import HomePage from './pages/HomePage';
 import ForgetPassword from './pages/ForgetPassword';
 import ConfirmEmail from './pages/ConfirmEmail';
@@ -20,7 +22,8 @@ import SignUpPage from './pages/SignUpPage'; // <-- Import
 import NotFoundPage from './pages/NotFoundPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
-import Newsletter from './components/Newsletter';
+import Newsletterpage from './pages/Newsletterpage';
+import { AuthProvider } from './context/AuthContext';
 import { fetchCSRFToken } from './services/api';
 
 
@@ -77,36 +80,39 @@ function App() {
     <StyledEngineProvider injectFirst>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-          <Router>
-            <ScrollTop />
-            <Box sx={{ 
-              position: 'relative',
-              backgroundColor: 'background.default',
-              minHeight: '100vh'
-            }}>
-                <Routes>
-                  <Route path="/" element={<Layout showHero={true}><HomePage/></Layout>} />
-                  <Route path="/article/:id" element={<ArticlePage />} />
-                  <Route path="/admin" element={<AdminDashboard />} />
-                  <Route path="/login" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><LoginPage /></Layout>} />
-                  <Route path="/about" element={<Layout showHero={false}><AboutPage /></Layout>} />
-                  <Route path="/contact" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><ContactPage /></Layout>} />
-                  <Route path="/newsletter" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><Newsletter /></Layout>} />
+        <React.StrictMode>
+          <AuthProvider>
+            <Router>
+              <ScrollTop />
+              <Box sx={{ 
+                position: 'relative',
+                backgroundColor: 'background.default',
+                minHeight: '100vh'
+              }}>
+                  <Routes>
+                    <Route path="/" element={<GuestOnlyRoute><Layout showHero={true}><HomePage/></Layout></GuestOnlyRoute>} />
+                    <Route path="/article/:id" element={<ArticlePage />} />
+                    <Route path="/admin" element={<AdminDashboard />} />
+                    <Route path="/login" element={<GuestOnlyRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><LoginPage /></Layout></GuestOnlyRoute>} />
+                    <Route path="/about" element={<Layout showHero={false}><AboutPage /></Layout>} />
+                    <Route path="/contact" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><ContactPage /></Layout>} />
+                    <Route path="/newsletter" element={<GuestOnlyRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><Newsletterpage /></Layout></GuestOnlyRoute>} />
 
 
-                  <Route path="/signup" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><SignUpPage /></Layout>} />
-                  <Route path="/submit" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><SubmitArticlePage /></Layout>} />
+                    <Route path="/signup" element={<GuestOnlyRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><SignUpPage /></Layout></GuestOnlyRoute>} />
+                    <Route path="/submit" element={<ProtectedRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><SubmitArticlePage /></Layout></ProtectedRoute>} />
 
-                  <Route path="/privacy" element={<NotFoundPage />} /> 
-                  <Route path="/terms" element={<NotFoundPage />} />
-                  <Route path="/forget" element={<NotFoundPage />} />
-                  <Route path="/confirm-email" element={<ConfirmEmail />} />
-                  <Route path="/forgot-password" element={<ForgetPassword />} />
+                    <Route path="/privacy" element={<NotFoundPage />} /> 
+                    <Route path="/terms" element={<NotFoundPage />} />
+                    <Route path="/confirm-email" element={<ConfirmEmail />} />
+                    <Route path="/forgot-password" element={<GuestOnlyRoute><ForgetPassword /></GuestOnlyRoute>} />
 
-                  <Route path="*" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><NotFoundPage /></Layout>} />
-                </Routes>
-            </Box>
-          </Router>
+                    <Route path="*" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><NotFoundPage /></Layout>} />
+                  </Routes>
+              </Box>
+            </Router>
+          </AuthProvider>
+        </React.StrictMode>
       </ThemeProvider>
     </StyledEngineProvider>
   );

@@ -35,7 +35,7 @@ const Layout = ({ children, showHero = false, showHeader = true, showNewsletter 
       >
         {children}
       </Container>
-      {showNewsletter && <Newsletter />}
+      {showNewsletter && <Newsletter fullpage="false" />}
       <Footer />
     </Box>
   );

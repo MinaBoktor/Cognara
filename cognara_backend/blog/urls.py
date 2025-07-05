@@ -10,6 +10,7 @@ urlpatterns = [
     path('emailcheck', views.check_email, name='check_email'),
     path('signup', views.signup, name='signup'),
     path('login', views.login, name='login'),
+    path('auth/status', views.auth_status, name='auth_status'),
     path('coderequest', views.request_code, name="request_code"),
     path('verifycode', views.verify_code, name="verify_code"),
     path('auth/google', views.google_auth, name="google_auth"),

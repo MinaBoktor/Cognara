@@ -152,6 +152,12 @@ export const fetchCSRFToken = async () => {
 };
 
 
+export const getAuthStatus = async () => {
+  const response = await apiClient.get('auth/status');
+  return response.data;
+};
+
+
 // Export the configured axios instance for direct use if needed
 export default apiClient;
 
