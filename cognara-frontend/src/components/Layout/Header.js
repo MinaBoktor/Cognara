@@ -10,19 +10,37 @@ import {
   Menu,
   MenuItem,
   useMediaQuery,
-  useTheme
+  useTheme,
+  Avatar,
+  Divider,
+  Badge,
+  ListItemIcon
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import { Link } from 'react-router-dom';
+import SettingsIcon from '@mui/icons-material/Settings';
+import HelpIcon from '@mui/icons-material/Help';
+import LogoutIcon from '@mui/icons-material/Logout';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { authAPI } from '../../services/api';
+
+
 
 const Header = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [anchorEl, setAnchorEl] = useState(null);
+  const [profileAnchorEl, setProfileAnchorEl] = useState(null);
   const [scrolled, setScrolled] = useState(false);
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const open = Boolean(anchorEl);
+  const profileOpen = Boolean(profileAnchorEl);
 
   useEffect(() => {
+    // Force scrollbar to always appear to prevent layout shift
+    document.documentElement.style.overflowY = 'scroll';
+    
     const handleScroll = () => {
       const isScrolled = window.scrollY > 10;
       if (isScrolled !== scrolled) {
@@ -31,7 +49,10 @@ const Header = () => {
     };
 
     window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      document.documentElement.style.overflowY = 'auto';
+    };
   }, [scrolled]);
 
   const handleMenuOpen = (event) => {
@@ -42,14 +63,36 @@ const Header = () => {
     setAnchorEl(null);
   };
 
+  const handleProfileMenuOpen = (event) => {
+    setProfileAnchorEl(event.currentTarget);
+  };
+
+  const handleProfileMenuClose = () => {
+    setProfileAnchorEl(null);
+  };
+
   const navItems = ['Home', 'About', 'Submit', 'Contact'];
-  const rightItems = ['Newsletter', 'Login', 'Sign Up'];
+  const guestRightItems = ['Newsletter', 'Login', 'Sign Up'];
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/');
+      handleProfileMenuClose();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  useEffect(() => {
+    console.log('User state changed:', user);
+  }, [user]);
 
   return (
     <AppBar 
       position="fixed"
       color="transparent"
-      elevation={scrolled ? 4 : 0} // Add elevation when scrolled
+      elevation={scrolled ? 4 : 0}
       sx={{
         py: 2,
         backgroundColor: scrolled ? 'background.paper' : 'transparent',
@@ -67,8 +110,10 @@ const Header = () => {
         }
       }}
     >
-      <Container maxWidth="lg">
-        <Toolbar disableGutters sx={{ justifyContent: 'space-between' }}>
+      <Container maxWidth="lg" sx={{ paddingRight: '0 !important' }}>
+        <Toolbar disableGutters sx={{ 
+          justifyContent: 'space-between',
+        }}>
           {/* Mobile menu button */}
           {isMobile && (
             <Box sx={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
@@ -89,18 +134,79 @@ const Header = () => {
                 onClose={handleMenuClose}
                 MenuListProps={{
                   'aria-labelledby': 'mobile-menu',
+                  sx: { padding: '0 !important' }
+                }}
+                PaperProps={{
+                  sx: {
+                    backgroundColor: theme.palette.background.paper,
+                    borderRadius: 2,
+                    minWidth: 200,
+                    boxShadow: theme.shadows[4],
+                    marginTop: 1
+                  }
                 }}
               >
-                {[...navItems, ...rightItems].map((item) => (
+                {navItems.map((item) => (
                   <MenuItem 
                     key={item} 
                     onClick={handleMenuClose}
                     component={Link}
                     to={item === 'Home' ? '/' : `/${item.toLowerCase().replace(' ', '-')}`}
+                    sx={{
+                      '&:hover': {
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                      }
+                    }}
                   >
                     {item}
                   </MenuItem>
                 ))}
+                {!user ? (
+                  guestRightItems.map((item) => {
+                    const path = item === 'Sign Up' ? '/signup' : `/${item.toLowerCase().replace(' ', '-')}`;
+                    return (
+                      <MenuItem 
+                        key={item} 
+                        onClick={handleMenuClose}
+                        component={Link}
+                        to={path}
+                        sx={{
+                          '&:hover': {
+                            backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                          }
+                        }}
+                      >
+                        {item}
+                      </MenuItem>
+                    );
+                  })
+                ) : (
+                  <>
+                    <MenuItem 
+                      onClick={handleMenuClose}
+                      component={Link}
+                      to="/settings"
+                      sx={{
+                        '&:hover': {
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                        }
+                      }}
+                    >
+                      Settings
+                    </MenuItem>
+                    <MenuItem 
+                      onClick={handleLogout}
+                      sx={{ 
+                        color: theme.palette.error.main,
+                        '&:hover': {
+                          backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                        }
+                      }}
+                    >
+                      Logout
+                    </MenuItem>
+                  </>
+                )}
               </Menu>
             </Box>
           )}
@@ -139,10 +245,10 @@ const Header = () => {
           <Box sx={{ 
             display: 'flex', 
             justifyContent: 'center',
-            flex: isMobile ? 0 : 1, // Only take flex space on desktop
-            position: isMobile ? 'absolute' : 'static', // Position absolutely on mobile
-            left: isMobile ? '50%' : 'auto', // Center horizontally on mobile
-            transform: isMobile ? 'translateX(-50%)' : 'none' // Adjust for perfect centering
+            flex: isMobile ? 0 : 1,
+            position: isMobile ? 'absolute' : 'static',
+            left: isMobile ? '50%' : 'auto',
+            transform: isMobile ? 'translateX(-50%)' : 'none'
           }}>
             <Typography 
               variant="h4" 
@@ -161,71 +267,180 @@ const Header = () => {
             </Typography>
           </Box>
 
-          {/* Right-aligned actions (desktop) */}
-          {!isMobile && (
-            <Box sx={{ 
-              display: 'flex', 
-              gap: 2,
-              flex: 1,
-              justifyContent: 'flex-end'
-            }}>
-              <Button 
-                component={Link} 
-                to="/newsletter"
+          {/* Right-aligned actions */}
+          <Box sx={{ 
+            display: 'flex', 
+            gap: 2,
+            flex: 1,
+            justifyContent: 'flex-end',
+            alignItems: 'center'
+          }}>
+            {!user ? (
+              !isMobile && (
+                <>
+                  <Button 
+                    component={Link} 
+                    to="/newsletter"
+                    sx={{
+                      color: 'text.primary',
+                      textTransform: 'none',
+                      fontSize: '1rem',
+                      fontWeight: '700',
+                      '&:hover': {
+                        color: 'primary.main',
+                        backgroundColor: 'transparent'
+                      }
+                    }}
+                  >
+                    Newsletter
+                  </Button>
+                  <Button 
+                    component={Link} 
+                    to="/login"
+                    variant="outlined"
+                    sx={{
+                      backgroundColor: 'primary.dark',
+                      borderColor: 'primary.dark',
+                      color: 'text.primary',
+                      textTransform: 'none',
+                      fontSize: '1rem',
+                      fontWeight: '700',
+                      px: 2,
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        color: 'primary.main'
+                      }
+                    }}
+                  >
+                    Login
+                  </Button>
+                  <Button 
+                    component={Link} 
+                    to="/signup"
+                    variant="outlined"
+                    sx={{
+                      backgroundColor: 'primary.dark',
+                      borderColor: 'primary.dark',
+                      color: 'text.primary',
+                      textTransform: 'none',
+                      fontSize: '1rem',
+                      fontWeight: '700',
+                      px: 2,
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        color: 'primary.main'
+                      }
+                    }}
+                  >
+                    Sign Up
+                  </Button>
+                </>
+              )
+            ) : (
+              <Box 
                 sx={{
-                  color: 'text.primary',
-                  textTransform: 'none',
-                  fontSize: '1rem',
-                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.5,
+                  cursor: 'pointer',
+                  p: 1,
+                  borderRadius: 2,
+                  transition: 'all 0.2s ease',
                   '&:hover': {
-                    color: 'primary.main',
-                    backgroundColor: 'transparent'
+                    backgroundColor: 'rgba(255, 255, 255, 0.08)'
                   }
                 }}
+                onClick={handleProfileMenuOpen}
               >
-                Newsletter
-              </Button>
-              <Button 
-                component={Link} 
-                to="/login"
-                variant="outlined"
-                sx={{
-                  backgroundColor: 'primary.dark',
-                  borderColor: 'primary.dark',
-                  color: 'text.primary',
-                  textTransform: 'none',
-                  fontSize: '1rem',
-                  fontWeight: '700',
-                  px: 2,
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    color: 'primary.main'
-                  }
-                }}
-              >
-                Login
-              </Button>
-              <Button 
-                component={Link} 
-                to="/signup"
-                variant="outlined"
-                sx={{
-                  backgroundColor: 'primary.dark',
-                  borderColor: 'primary.dark',
-                  color: 'text.primary',
-                  textTransform: 'none',
-                  fontSize: '1rem',
-                  fontWeight: '700',
-                  px: 2,
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    color: 'primary.main'
-                  }
-                }}
-              >
-                Sign Up
-              </Button>
-            </Box>
+                <Badge
+                  overlap="circular"
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  variant="dot"
+                  sx={{
+                    '& .MuiBadge-badge': {
+                      backgroundColor: theme.palette.success.main,
+                      color: theme.palette.success.main,
+                      boxShadow: `0 0 0 2px ${theme.palette.background.paper}`,
+                    }
+                  }}
+                >
+                  <Avatar 
+                    src={user?.profilePicture || ''} 
+                    alt={`${user?.first_name} ${user?.last_name}`}
+                    sx={{
+                      width: isMobile ? 36 : 40,
+                      height: isMobile ? 36 : 40,
+                      bgcolor: theme.palette.primary.main,
+                      color: theme.palette.primary.contrastText,
+                      fontSize: '0.875rem',
+                      fontWeight: 600
+                    }}
+                  >
+                    {user?.first_name?.charAt(0)}{user?.last_name?.charAt(0)}
+                  </Avatar>
+                </Badge>
+                {!isMobile && (
+                  <Typography 
+                    variant="subtitle2"
+                    sx={{
+                      fontWeight: 600,
+                      color: 'text.primary',
+                    }}
+                  >
+                    {user.first_name} {user.last_name}
+                  </Typography>
+                )}
+              </Box>
+            )}
+          </Box>
+
+          {/* Profile dropdown menu */}
+          {user && (
+            <Menu
+              anchorEl={profileAnchorEl}
+              open={profileOpen}
+              onClose={handleProfileMenuClose}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'center',
+              }}
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'center',
+              }}
+              PaperProps={{
+                sx: {
+                  mt: 1,
+                  minWidth: 200,
+                  borderRadius: 1,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  '& .MuiMenuItem-root': {
+                    px: 2,
+                    py: '6px',
+                  },
+                },
+              }}
+            >
+              <MenuItem onClick={handleProfileMenuClose} component={Link} to="/settings">
+                <ListItemIcon>
+                  <SettingsIcon fontSize="small" />
+                </ListItemIcon>
+                Settings
+              </MenuItem>
+              <MenuItem onClick={handleProfileMenuClose} component={Link} to="/help">
+                <ListItemIcon>
+                  <HelpIcon fontSize="small" />
+                </ListItemIcon>
+                Help
+              </MenuItem>
+              <Divider sx={{ my: 0.5 }} />
+              <MenuItem onClick={handleLogout}>
+                <ListItemIcon>
+                  <LogoutIcon fontSize="small" color="error" />
+                </ListItemIcon>
+                <Typography color="error">Logout</Typography>
+              </MenuItem>
+            </Menu>
           )}
         </Toolbar>
       </Container>

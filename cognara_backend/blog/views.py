@@ -5,7 +5,6 @@ from rest_framework.response import Response
 from functools import wraps
 from rest_framework import status
 from rest_framework.permissions import AllowAny
-from rest_framework.decorators import api_view, permission_classes
 from datetime import datetime, timezone
 from .helper import *
 from django.contrib.auth.hashers import make_password, check_password
@@ -13,6 +12,8 @@ from django.conf import settings
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from django.views.decorators.csrf import ensure_csrf_cookie
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+
 
 
 SUPABASE_URL = settings.SUPABASE_URL
@@ -338,7 +339,7 @@ def login(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-@require_frontend_token
+
 def require_session_login(view_func):
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
@@ -348,17 +349,24 @@ def require_session_login(view_func):
     return _wrapped_view
 
 
-@require_frontend_token
 @api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@require_session_login
+@require_frontend_token
 def logout(request):
-    request.session.flush()
-    return JsonResponse({'status': 'logged out'})
+    try:
+        request.session.flush()
+        return JsonResponse({'status': 'logged out'}, status=200)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 @require_frontend_token
 @api_view(['GET'])
 def auth_status(request):
     if 'id' in request.session:
+        print("True")
         return Response({
             'authenticated': True,
             'id': request.session['id'],

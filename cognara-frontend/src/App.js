@@ -23,6 +23,7 @@ import NotFoundPage from './pages/NotFoundPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 import Newsletterpage from './pages/Newsletterpage';
+import Dashboard from './pages/Dashboard';
 import { AuthProvider } from './context/AuthContext';
 import { fetchCSRFToken } from './services/api';
 
@@ -97,7 +98,7 @@ function App() {
                     <Route path="/about" element={<Layout showHero={false}><AboutPage /></Layout>} />
                     <Route path="/contact" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><ContactPage /></Layout>} />
                     <Route path="/newsletter" element={<GuestOnlyRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><Newsletterpage /></Layout></GuestOnlyRoute>} />
-
+                    <Route path="/dashboard" element={<ProtectedRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><Dashboard></Dashboard></Layout></ProtectedRoute>} />
 
                     <Route path="/signup" element={<GuestOnlyRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><SignUpPage /></Layout></GuestOnlyRoute>} />
                     <Route path="/submit" element={<ProtectedRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><SubmitArticlePage /></Layout></ProtectedRoute>} />

@@ -41,6 +41,8 @@ export const authAPI = {
       password_hash: password
     }),
 
+  logout: () => apiClient.post('logout'),
+
   // Social authentication
   googleAuth: (credential) =>
     apiClient.post('auth/google', {

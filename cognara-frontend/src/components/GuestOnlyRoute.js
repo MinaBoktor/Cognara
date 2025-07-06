@@ -25,7 +25,7 @@ const GuestOnlyRoute = ({ children }) => {
     );
   }
 
-  return user ? <Navigate to="/userhomepage" replace /> : children;
+  return user ? <Navigate to="/dashboard" replace /> : children;
 };
 
 export default GuestOnlyRoute;

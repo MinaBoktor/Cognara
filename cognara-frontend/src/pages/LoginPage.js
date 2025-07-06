@@ -26,6 +26,7 @@ import FacebookIcon from '@mui/icons-material/Facebook';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import { authAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 
 const LoginPage = () => {
@@ -44,6 +45,7 @@ const LoginPage = () => {
   const location = useLocation();
   const [resetSuccess, setResetSuccess] = useState(false);
   const containerRef = useRef(null);
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -152,24 +154,13 @@ const LoginPage = () => {
     setIsSubmitting(true);
     
     try {
-      const response = await authAPI.login(email, password);
-
-      const responseData = response.data;
-
-      // Handle response based on status
-      if (responseData.status === '1') {
-        // Successful login
-        navigate('/userhomepage');
-      } else if (responseData.status === '0') {
-        // Invalid credentials
-        setSubmitError('Invalid email or password');
-      } else {
-        // Unexpected response
-        throw new Error('Unexpected response from server');
-      }
+      await login(email, password);
+      // Add a small delay to ensure state propagation
+      await new Promise(resolve => setTimeout(resolve, 100));
+      navigate('/dashboard');
     } catch (error) {
       console.error('Login error:', error);
-      setSubmitError(error.message || 'An error occurred during login');
+      setSubmitError(error.response?.data?.message || 'Invalid email or password');
     } finally {
       setIsSubmitting(false);
     }
