@@ -30,6 +30,11 @@ export const articlesAPI = {
   getAll: () => apiClient.get('articles'),
   getById: (id) => apiClient.get(`articles/${id}`),
   getComments: (id) => apiClient.get(`articles/${id}/comments`),
+  postComment: (article_id, comment) => apiClient.post(`articles/post-comments`, {
+    comment: comment,
+    article_id: article_id
+  }),
+  getImages: (articleId) => apiClient.post('get-article-images', { article_id: articleId }),
 };
 
 // Authentication API

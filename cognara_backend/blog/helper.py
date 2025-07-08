@@ -6,6 +6,14 @@ from django.http import JsonResponse
 import re
 import random
 import os
+from supabase import create_client
+
+
+SUPABASE_URL = settings.SUPABASE_URL
+SUPABASE_KEY = settings.SUPABASE_KEY
+SUPABASE_BUCKET = {'Articles':'article-photos', "Assets": 'assets'}
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def send_email(subject, body, to_email):
     from_email = settings.EMAIL_HOST_USER
@@ -75,10 +83,30 @@ def generate_code():
 def require_frontend_token(view_func):
     def wrapped_view(request, *args, **kwargs):
         token = request.headers.get('App-Token')
+        print(token)
+        print(settings.FRONTEND_API_TOKEN)
         if token != settings.FRONTEND_API_TOKEN:
             return JsonResponse({'error': 'Unauthorized access'}, status=403)
         return view_func(request, *args, **kwargs)
     return wrapped_view
+
+
+def get_user(id):
+    user = supabase.table('users').select('first_name, last_name').eq('id', id).execute()
+    if not user.data:
+        return False
+    return user.data[0]
+
+
+def upload_article_image(article_id, file_obj, filename):
+    storage_path = f"{article_id}/{filename}"
+
+    # Upload to storage bucket
+    response = supabase.storage.from_('article-photos').upload(storage_path, file_obj)
+    if response.get("error"):
+        raise Exception("Upload failed: " + str(response["error"]))
+
+    return storage_path
 
 
 subjects = {"confirmation": "Your Cognara Confirmation Code"

@@ -364,7 +364,7 @@ const Dashboard = () => {
                 ) : (
                   <Grid container spacing={4}>
                     {articles.slice(0, 6).map((article) => (
-                      <Grid item key={article.id} xs={12} width={400} sm={6} md={4}>
+                      <Grid item key={article.id} xs={12} sm={6} md={4} lg={3}>
                         <ArticleCard article={article} />
                       </Grid>
                     ))}

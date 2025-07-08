@@ -13,6 +13,7 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
+import time
 
 
 
@@ -34,9 +35,14 @@ def get_articles(request):
     try:
         # This will raise an exception if Supabase fails
         response = supabase.table('articles').select('*').execute()
+        print(response.data)
+
+        for res in range(len(response.data)):
+            user = get_user(response.data[res]['author_id'])
+            response.data[res]['author_first_name'] = user['first_name']
+            response.data[res]['author_last_name'] = user['last_name']
 
         return JsonResponse(response.data, safe=False)
-
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
@@ -48,6 +54,11 @@ def get_article(request, article_id):
         response = supabase.table('articles').select('*').eq('id', article_id).execute()
         if not response.data:
             return JsonResponse({'error': 'Article not found'}, status=404)
+
+        user = get_user(response.data[0]['author_id'])
+        response.data[0]['author_first_name'] = user['first_name']
+        response.data[0]['author_last_name'] = user['last_name']
+
         return JsonResponse(response.data[0])
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
@@ -59,31 +70,61 @@ def get_comments(request, article_id):
     try:
         # First get all comments for the article
         comments_response = supabase.table('comments').select('*').eq('article_id', article_id).execute()
-        
+
         if not comments_response.data:
             return JsonResponse({'comments': [], 'count': 0}, status=200)
-        
+
         # Get all unique user_ids from comments
         user_ids = list({comment['user_id'] for comment in comments_response.data if comment['user_id']})
-        
+
         # Fetch usernames in a single query if there are any user_ids
         users = {}
         if user_ids:
             users_response = supabase.table('users').select('id,username').in_('id', user_ids).execute()
             users = {user['id']: user['username'] for user in users_response.data}
-        
+
         # Enhance comments with usernames
         enhanced_comments = []
         for comment in comments_response.data:
             enhanced_comment = dict(comment)  # Create a copy
             enhanced_comment['username'] = users.get(comment['user_id']) if comment['user_id'] else None
             enhanced_comments.append(enhanced_comment)
-        
+
         return JsonResponse({
             'comments': enhanced_comments,
             'count': len(enhanced_comments)
         })
-        
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@require_frontend_token
+@permission_classes([AllowAny])
+def post_comments(request):
+    try:
+        comment = request.data.get('comment')
+        user_id = request.session['id']
+        article_id = request.data.get('article_id')
+
+        if not comment or not article_id:
+            return JsonResponse({'error': 'Comment and Article ID are missing'}, status=400)
+
+        user = get_user(user_id)
+        if not user:
+            return JsonResponse({'error': 'User not found'}, status=400)
+
+        data = {
+            'content': comment,
+            'user_id': user_id,
+            'article_id': article_id
+        }
+
+        response = supabase.table('comments').insert(data).execute()
+
+        return JsonResponse({'status': '1'}, status=200)
+
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
@@ -426,3 +467,82 @@ def newsletter_subscription(request):
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+@require_frontend_token
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@require_session_login
+def upload_article_photo(request):
+    try:
+        article_id = request.data.get("article_id")
+        file = request.FILES.get("file")
+
+        if not article_id or not file:
+            return JsonResponse({'error': 'article_id and file are required'}, status=400)
+
+        try:
+            article_id = int(article_id)
+        except ValueError:
+            return JsonResponse({'error': 'Invalid article_id'}, status=400)
+
+        # Check if article exists
+        response = supabase.table("articles").select("id").eq("id", article_id).execute()
+        if not response.data:
+            return JsonResponse({'error': 'Article not found'}, status=404)
+
+        # Upload image to Supabase Storage
+        filename = f"{int(time.time())}_{file.name}"
+        storage_path = upload_article_image(article_id, file, filename)
+
+        data = {
+            "article_id": article_id,
+            "path": storage_path,
+        }
+
+        # Insert image record into article_photos table
+        insert_response = supabase.table("article_photos").insert(data).execute()
+
+        # Get public URL
+        public_url = supabase.storage.from_("article-photos").get_public_url(storage_path).get("publicURL")
+
+        return JsonResponse({'status': '1'}, status=200)
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@require_frontend_token
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def get_article_images(request):
+    try:
+        article_id = request.data.get("article_id")
+
+        if not article_id:
+            return JsonResponse({"error": "Missing article_id"}, status=400)
+
+        try:
+            article_id = int(article_id)
+        except ValueError:
+            return JsonResponse({"error": "Invalid article_id"}, status=400)
+
+        # ✅ Get all photo paths for the article
+        response = supabase.table("article_photos").select("path").eq("article_id", article_id).execute()
+
+        images = []
+        for item in response.data:
+            path = item["path"]
+
+            signed_url_data = supabase.storage.from_("article-photos").create_signed_url(path, 3600)  # 3600 seconds = 1 hour
+            signed_url = signed_url_data.get("signedURL")
+
+            images.append({
+                "path": path,
+                "url": signed_url
+            })
+
+        return JsonResponse({"images": images}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)

@@ -29,7 +29,7 @@ const HomePage = () => {
         <title>Cognara - Home</title>
       </Helmet>
 
-      <Container maxWidth="lg" sx={{ py: 8 }}>
+    <Container maxWidth={false} disableGutters sx={{ py: 8, px: 4 }}>
         <Typography 
           variant="h3" 
           component="h2" 

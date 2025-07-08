@@ -6,6 +6,7 @@ urlpatterns = [
     path('articles', views.get_articles, name='get_articles'),
     path('articles/<article_id>', views.get_article, name='get_article'),
     path('articles/<article_id>/comments', views.get_comments, name='get_comments'),
+    path('articles/add-comment', views.post_comments, name='post_comments'),
     path('usercheck', views.check_user, name='check_user'),
     path('emailcheck', views.check_email, name='check_email'),
     path('signup', views.signup, name='signup'),
@@ -16,5 +17,6 @@ urlpatterns = [
     path('verifycode', views.verify_code, name="verify_code"),
     path('auth/google', views.google_auth, name="google_auth"),
     path('forgetpass', views.forgetpass, name="forgetpass"),
-    path('newsletter/subscribe', views.newsletter_subscription, name="newsletter_subscription")
+    path('newsletter/subscribe', views.newsletter_subscription, name="newsletter_subscription"),
+    path("get-article-images", views.get_article_images ,name="get_article_images"),
 ]

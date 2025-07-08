@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Card,
   CardMedia,
@@ -7,72 +7,103 @@ import {
   Button,
   Box,
   useTheme,
-  Avatar,
-  Divider
+  Avatar
 } from '@mui/material';
 import { Link } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
+import { articlesAPI } from '../../services/api';
+
+const CARD_HEIGHT = 400;
+const IMAGE_HEIGHT = 160;
 
 const ArticleCard = ({ article }) => {
   const theme = useTheme();
-  const hasImage = Boolean(article?.featured_image);
+  const [imageUrl, setImageUrl] = useState(null);
 
-  const authorEmail = article?.author_email || 'unknown@example.com';
-  const authorName = article?.author_name || authorEmail.split('@')[0];
+  const capitalize = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
+
+  // Adapted to new backend structure
+  const authorFirst = capitalize(article?.author_first_name || '');
+  const authorLast = capitalize(article?.author_last_name || '');
+  const authorName = (authorFirst || authorLast) ? `${authorFirst} ${authorLast}`.trim() : 'Unknown';
   const authorInitial = authorName.charAt(0).toUpperCase();
+
   const publishDate = article?.created_at ? new Date(article.created_at) : new Date();
+  const titleLength = (article.title || '').length;
+  const fontSize = titleLength > 60 ? '0.95rem' : titleLength > 40 ? '1.05rem' : '1.15rem';
+  const hasImage = Boolean(imageUrl);
+  const maxExcerptLines = hasImage ? 2 : 9;
+
+
+
+  useEffect(() => {
+    if (article?.id) {
+      articlesAPI.getImages(article.id)
+        .then(res => {
+          const firstImage = res.data.images?.[0];
+          if (firstImage?.url) {
+            setImageUrl(firstImage.url);
+          }
+        })
+        .catch(err => {
+          console.error('Failed to fetch article images', err);
+        });
+    }
+  }, [article?.id]);
 
   return (
     <Card
       sx={{
+        width: '100%', // 👈 Controlled by the Grid container
+        maxWidth: 340, // 👈 Optional: limit width per card
+        height: 400,
         display: 'flex',
         flexDirection: 'column',
-        height: 300, // ensures it grows within Grid constraints
-        minHeight: 300, // set a consistent minimum height for all cards
-        background: theme.palette.background.paper,
         borderRadius: 3,
-        boxShadow: '0 8px 30px rgba(0, 0, 0, 0.25)',
         overflow: 'hidden',
-        transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+        backgroundColor: theme.palette.background.paper,
+        boxShadow: '0 6px 24px rgba(0,0,0,0.15)',
+        transition: 'all 0.3s ease',
         '&:hover': {
-          transform: 'translateY(-6px)',
-          boxShadow: '0 12px 36px rgba(0, 0, 0, 0.4)'
-        }
+          transform: 'translateY(-4px)',
+          boxShadow: '0 10px 36px rgba(0,0,0,0.25)',
+        },
       }}
     >
-      {hasImage && (
+      {imageUrl && (
         <CardMedia
           component="img"
-          image={article.featured_image}
+          image={imageUrl}
           alt={article.title}
           sx={{
-            height: 200,
-            objectFit: 'cover',
+            height: 160,
             width: '100%',
+            objectFit: 'cover',
           }}
         />
       )}
 
       <CardContent
         sx={{
-          flexGrow: 1,
+          flex: 1,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          p: 3
+          p: 2,
         }}
       >
+        {/* Article title & excerpt */}
         <Box>
           <Typography
-            variant="h6"
             sx={{
+              fontSize,
               fontWeight: 700,
               color: theme.palette.primary.main,
               mb: 1,
               display: '-webkit-box',
               WebkitLineClamp: 2,
               WebkitBoxOrient: 'vertical',
-              overflow: 'hidden'
+              overflow: 'hidden',
             }}
           >
             {article.title || 'Untitled Article'}
@@ -84,17 +115,18 @@ const ArticleCard = ({ article }) => {
             sx={{
               lineHeight: 1.6,
               display: '-webkit-box',
-              WebkitLineClamp: 3,
+              WebkitLineClamp: maxExcerptLines,
               WebkitBoxOrient: 'vertical',
               overflow: 'hidden',
               mb: 2
             }}
           >
-            {article.excerpt || article.content?.substring(0, 160) || 'No content'}...
+            {article.excerpt || article.content?.substring(0, 300) || 'No content'}...
           </Typography>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', mt: 'auto' }}>
+        {/* Author + Time */}
+        <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
           <Avatar
             sx={{
               width: 36,
@@ -102,13 +134,16 @@ const ArticleCard = ({ article }) => {
               mr: 1.5,
               backgroundColor: theme.palette.primary.light,
               color: theme.palette.primary.contrastText,
-              fontWeight: 600
+              fontWeight: 600,
             }}
           >
             {authorInitial}
           </Avatar>
           <Box>
-            <Typography variant="caption" sx={{ fontWeight: 600 }}>
+            <Typography
+              variant="caption"
+              sx={{ fontWeight: 600, mr: 1 }} // 👈 adds spacing
+            >
               {authorName}
             </Typography>
             <Typography variant="caption" color="text.secondary">
@@ -118,7 +153,8 @@ const ArticleCard = ({ article }) => {
         </Box>
       </CardContent>
 
-      <Box sx={{ p: 2 }}>
+      {/* CTA Button */}
+      <Box sx={{ px: 2, pb: 2 }}>
         <Button
           component={Link}
           to={`/article/${article?.id || ''}`}
@@ -131,16 +167,15 @@ const ArticleCard = ({ article }) => {
             borderRadius: 2,
             py: 1.2,
             '&:hover': {
-              transform: 'translateY(-2px)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-            }
+              transform: 'translateY(-1px)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            },
           }}
         >
           Read Article
         </Button>
       </Box>
     </Card>
-
   );
 };
 
