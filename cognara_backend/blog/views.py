@@ -2,7 +2,7 @@ from django.http import JsonResponse
 from supabase import create_client
 from django.views.decorators.http import require_GET
 from rest_framework.response import Response
-from functools import wraps
+
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from datetime import datetime, timezone
@@ -35,7 +35,6 @@ def get_articles(request):
     try:
         # This will raise an exception if Supabase fails
         response = supabase.table('articles').select('*').execute()
-        print(response.data)
 
         for res in range(len(response.data)):
             user = get_user(response.data[res]['author_id'])
@@ -99,14 +98,18 @@ def get_comments(request, article_id):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+
+
 @api_view(['POST'])
-@require_frontend_token
-@permission_classes([AllowAny])
+#@require_frontend_token
+@require_session_login
 def post_comments(request):
     try:
         comment = request.data.get('comment')
         user_id = request.session['id']
         article_id = request.data.get('article_id')
+
+        print(comment, user_id, article_id)
 
         if not comment or not article_id:
             return JsonResponse({'error': 'Comment and Article ID are missing'}, status=400)
@@ -380,14 +383,6 @@ def login(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
-
-def require_session_login(view_func):
-    @wraps(view_func)
-    def _wrapped_view(request, *args, **kwargs):
-        if 'id' not in request.session:
-            return Response({'error': 'Authentication required'}, status=401)
-        return view_func(request, *args, **kwargs)
-    return _wrapped_view
 
 
 @api_view(['POST'])

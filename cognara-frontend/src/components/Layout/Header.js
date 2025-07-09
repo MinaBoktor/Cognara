@@ -14,19 +14,19 @@ import {
   Avatar,
   Divider,
   Badge,
-  ListItemIcon
+  ListItemIcon,
+  Tooltip
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
 import HelpIcon from '@mui/icons-material/Help';
 import LogoutIcon from '@mui/icons-material/Logout';
+import { Brightness4 as DarkModeIcon, Brightness7 as LightModeIcon } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { authAPI } from '../../services/api';
 
-
-
-const Header = () => {
+const Header = ({ isDarkMode, setIsDarkMode }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [anchorEl, setAnchorEl] = useState(null);
@@ -69,6 +69,10 @@ const Header = () => {
 
   const handleProfileMenuClose = () => {
     setProfileAnchorEl(null);
+  };
+
+  const handleThemeToggle = () => {
+    setIsDarkMode(!isDarkMode);
   };
 
   const navItems = ['Home', 'About', 'Submit', 'Contact'];
@@ -207,6 +211,24 @@ const Header = () => {
                     </MenuItem>
                   </>
                 )}
+                {/* Theme toggle in mobile menu */}
+                <Divider />
+                <MenuItem 
+                  onClick={() => {
+                    handleThemeToggle();
+                    handleMenuClose();
+                  }}
+                  sx={{
+                    '&:hover': {
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                    }
+                  }}
+                >
+                  <ListItemIcon>
+                    {isDarkMode ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+                  </ListItemIcon>
+                  {isDarkMode ? 'Light Mode' : 'Dark Mode'}
+                </MenuItem>
               </Menu>
             </Box>
           )}
@@ -275,6 +297,24 @@ const Header = () => {
             justifyContent: 'flex-end',
             alignItems: 'center'
           }}>
+            {/* Theme toggle button for desktop */}
+            {!isMobile && (
+              <Tooltip title={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}>
+                <IconButton
+                  onClick={handleThemeToggle}
+                  sx={{
+                    color: 'text.primary',
+                    '&:hover': {
+                      color: 'primary.main',
+                      backgroundColor: 'rgba(255, 255, 255, 0.08)'
+                    }
+                  }}
+                >
+                  {isDarkMode ? <LightModeIcon /> : <DarkModeIcon />}
+                </IconButton>
+              </Tooltip>
+            )}
+
             {!user ? (
               !isMobile && (
                 <>
@@ -432,6 +472,17 @@ const Header = () => {
                   <HelpIcon fontSize="small" />
                 </ListItemIcon>
                 Help
+              </MenuItem>
+              <Divider sx={{ my: 0.5 }} />
+              {/* Theme toggle in profile menu for logged-in users */}
+              <MenuItem onClick={() => {
+                handleThemeToggle();
+                handleProfileMenuClose();
+              }}>
+                <ListItemIcon>
+                  {isDarkMode ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+                </ListItemIcon>
+                {isDarkMode ? 'Light Mode' : 'Dark Mode'}
               </MenuItem>
               <Divider sx={{ my: 0.5 }} />
               <MenuItem onClick={handleLogout}>

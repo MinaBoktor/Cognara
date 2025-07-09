@@ -1,6 +1,4 @@
-
-
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -27,93 +25,104 @@ import Dashboard from './pages/Dashboard';
 import { AuthProvider } from './context/AuthContext';
 import { fetchCSRFToken } from './services/api';
 
+function App() {
+  // Dark mode state management
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const savedMode = localStorage.getItem('darkMode')
+    return savedMode ? JSON.parse(savedMode) : false
+  })
 
-const theme = createTheme({
-  // ... your existing theme object
-  palette: {
-    mode: 'dark',
-    primary: {
-      main: '#82AFFF',
-      light: '#A6C8FF',
-      dark: '#3E64FF',
-      contrastText: '#ffffff'
+  // Persist dark mode preference
+  useEffect(() => {
+    localStorage.setItem('darkMode', JSON.stringify(isDarkMode))
+  }, [isDarkMode])
+
+  // Create theme based on dark mode state
+  const theme = createTheme({
+    palette: {
+      mode: isDarkMode ? 'dark' : 'light',
+      primary: {
+        main: isDarkMode ? '#90caf9' : '#1976d2'
+      },
+      secondary: {
+        main: isDarkMode ? '#f48fb1' : '#dc004e'
+      },
+      background: {
+        default: isDarkMode ? '#121212' : '#f5f5f5',
+        paper: isDarkMode ? '#1e1e1e' : '#ffffff'
+      },
+      text: {
+        primary: isDarkMode ? '#ffffff' : '#000000',
+        secondary: isDarkMode ? '#bbbbbb' : '#555555'
+      }
     },
-    secondary: {
-      main: '#F2A365',
+    typography: {
+      fontFamily: 'Roboto, sans-serif',
+      h4: {
+        fontWeight: 700,
+        marginBottom: '1rem'
+      },
+      h6: {
+        fontWeight: 600,
+        marginBottom: '0.5rem'
+      },
+      body1: {
+        lineHeight: 1.8
+      }
     },
-    background: {
-      default: '#0F1117',
-      paper: '#1C1E26',
-    },
-    text: {
-      primary: '#E6E8F0',
-      secondary: '#A0A3B1'
-    }
-  },
-  typography: {
-    fontFamily: '"Inter", "Segoe UI", "Roboto", sans-serif',
-  },
-  components: {
-    MuiCssBaseline: {
-      styleOverrides: {
-        body: {
-          scrollbarWidth: 'none',  /* Firefox */
-          '&::-webkit-scrollbar': {
-            display: 'none'
-          },
-          '-ms-overflow-style': 'none'
+    components: {
+      MuiLink: {
+        defaultProps: {
+          // component: RouterLink // Use React Router Link for all MUI Links
+        }
+      },
+      MuiButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: '8px' // Custom border radius for buttons
+          }
+        }
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            boxShadow: isDarkMode
+              ? '0px 0px 15px rgba(255, 255, 255, 0.1)'
+              : '0px 0px 15px rgba(0,0,0,0.1)'
+          }
         }
       }
-    }
-  }
-});
-
-
-
-function App() {
+      }
+  });
 
   useEffect(() => {
-      fetchCSRFToken();
-    }, []);
-
+    fetchCSRFToken();
+  }, []);
 
   return (
     <StyledEngineProvider injectFirst>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <React.StrictMode>
+        <Router>
+          <ScrollTop />
           <AuthProvider>
-            <Router>
-              <ScrollTop />
-              <Box sx={{ 
-                position: 'relative',
-                backgroundColor: 'background.default',
-                minHeight: '100vh'
-              }}>
-                  <Routes>
-                    <Route path="/" element={<GuestOnlyRoute><Layout showHero={true}><HomePage/></Layout></GuestOnlyRoute>} />
-                    <Route path="/article/:id" element={<ArticlePage />} />
-                    <Route path="/admin" element={<AdminDashboard />} />
-                    <Route path="/login" element={<GuestOnlyRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><LoginPage /></Layout></GuestOnlyRoute>} />
-                    <Route path="/about" element={<Layout showHero={false}><AboutPage /></Layout>} />
-                    <Route path="/contact" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><ContactPage /></Layout>} />
-                    <Route path="/newsletter" element={<GuestOnlyRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><Newsletterpage /></Layout></GuestOnlyRoute>} />
-                    <Route path="/dashboard" element={<ProtectedRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><Dashboard></Dashboard></Layout></ProtectedRoute>} />
-
-                    <Route path="/signup" element={<GuestOnlyRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><SignUpPage /></Layout></GuestOnlyRoute>} />
-                    <Route path="/submit" element={<ProtectedRoute><Layout showHero={false} showHeader={true} showNewsletter={false}><SubmitArticlePage /></Layout></ProtectedRoute>} />
-
-                    <Route path="/privacy" element={<NotFoundPage />} /> 
-                    <Route path="/terms" element={<NotFoundPage />} />
-                    <Route path="/confirm-email" element={<ConfirmEmail />} />
-                    <Route path="/forgot-password" element={<GuestOnlyRoute><ForgetPassword /></GuestOnlyRoute>} />
-
-                    <Route path="*" element={<Layout showHero={false} showHeader={true} showNewsletter={false}><NotFoundPage /></Layout>} />
-                  </Routes>
-              </Box>
-            </Router>
+            <Routes>
+              <Route path="/" element={<GuestOnlyRoute><Layout showHero={true} showHeader={true} showNewsletter={true} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><HomePage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout></GuestOnlyRoute>} />
+              <Route path="/login" element={<GuestOnlyRoute> <Layout showHero={false} showHeader={true} showNewsletter={false} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><LoginPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout> </GuestOnlyRoute>} />
+              <Route path="/signup" element={<GuestOnlyRoute> <Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><SignUpPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout> </GuestOnlyRoute>} />
+              <Route path="/forgot-password" element={<GuestOnlyRoute> <ForgetPassword isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </GuestOnlyRoute>} />
+              <Route path="/confirm-email" element={<GuestOnlyRoute> <ConfirmEmail isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </GuestOnlyRoute>} />
+              <Route path="/article/:id" element={<Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><ArticlePage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout>} />
+              <Route path="/submit" element={<ProtectedRoute> <Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><SubmitArticlePage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout> </ProtectedRoute>} />
+              <Route path="/admin" element={<ProtectedRoute adminOnly> <AdminDashboard isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </ProtectedRoute>} />
+              <Route path="/about" element={<Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}> <AboutPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </Layout>} />
+              <Route path="/contact" element={<Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}> <ContactPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </Layout>} />
+              <Route path="/newsletter" element={<GuestOnlyRoute><Layout showNewsletter={false} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><Newsletterpage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout></GuestOnlyRoute>} />
+              <Route path="/dashboard" element={<ProtectedRoute><Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}> <Dashboard isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout> </ProtectedRoute>} />
+              <Route path="*" element={<Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><NotFoundPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout>} />
+            </Routes>
           </AuthProvider>
-        </React.StrictMode>
+        </Router>
       </ThemeProvider>
     </StyledEngineProvider>
   );

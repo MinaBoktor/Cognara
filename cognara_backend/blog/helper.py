@@ -7,6 +7,7 @@ import re
 import random
 import os
 from supabase import create_client
+from functools import wraps
 
 
 SUPABASE_URL = settings.SUPABASE_URL
@@ -83,12 +84,20 @@ def generate_code():
 def require_frontend_token(view_func):
     def wrapped_view(request, *args, **kwargs):
         token = request.headers.get('App-Token')
-        print(token)
-        print(settings.FRONTEND_API_TOKEN)
         if token != settings.FRONTEND_API_TOKEN:
             return JsonResponse({'error': 'Unauthorized access'}, status=403)
         return view_func(request, *args, **kwargs)
     return wrapped_view
+
+def require_session_login(view_func):
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        print("SESSION DATA:", request.session.items())
+        if 'id' not in request.session:
+            print('Session missing user id')
+            return JsonResponse({'error': 'Authentication required'}, status=401)
+        return view_func(request, *args, **kwargs)
+    return _wrapped_view
 
 
 def get_user(id):

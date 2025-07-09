@@ -30,7 +30,7 @@ export const articlesAPI = {
   getAll: () => apiClient.get('articles'),
   getById: (id) => apiClient.get(`articles/${id}`),
   getComments: (id) => apiClient.get(`articles/${id}/comments`),
-  postComment: (article_id, comment) => apiClient.post(`articles/post-comments`, {
+  postComment: (article_id, comment) => apiClient.post('articles/add-comment', {
     comment: comment,
     article_id: article_id
   }),
