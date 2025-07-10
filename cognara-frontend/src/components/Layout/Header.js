@@ -339,16 +339,17 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
                     to="/login"
                     variant="outlined"
                     sx={{
-                      backgroundColor: 'primary.dark',
-                      borderColor: 'primary.dark',
+                      backgroundColor: 'primary.main',
+                      borderColor: 'primary.main',
                       color: 'text.primary',
                       textTransform: 'none',
                       fontSize: '1rem',
                       fontWeight: '700',
                       px: 2,
                       '&:hover': {
-                        borderColor: 'primary.main',
-                        color: 'primary.main'
+                        color: 'text.primary',
+                        borderColor: 'secondary.main',
+                        backgroundColor: 'secondary.main',
                       }
                     }}
                   >
@@ -359,16 +360,17 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
                     to="/signup"
                     variant="outlined"
                     sx={{
-                      backgroundColor: 'primary.dark',
-                      borderColor: 'primary.dark',
+                      backgroundColor: 'primary.main',
+                      borderColor: 'primary.main',
                       color: 'text.primary',
                       textTransform: 'none',
                       fontSize: '1rem',
                       fontWeight: '700',
                       px: 2,
                       '&:hover': {
-                        borderColor: 'primary.main',
-                        color: 'primary.main'
+                        borderColor: 'secondary.main',
+                        backgroundColor: 'secondary.main',
+                        color: 'text.primary',
                       }
                     }}
                   >

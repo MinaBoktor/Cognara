@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, Typography, Button, Container, TextField, InputAdornment, IconButton } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import CloseIcon from '@mui/icons-material/Close';
-import bg1 from '../assets/Hero_background.jpg';
-
-const images = [{ url: bg1 }];
+import bgDark from '../assets/Hero_background_dark.jpg';
+import bgLight from '../assets/Hero_background_light.png';
 
 const staticContent = {
   title: 'Discover The Best Knowledge',
@@ -15,15 +14,12 @@ const staticContent = {
   secondaryButtonLink: '/about'
 };
 
-const HeroSection = () => {
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
+const HeroSection = ({ isDarkMode }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [typedTitle, setTypedTitle] = useState('');
   const [typedSubtitle, setTypedSubtitle] = useState('');
   const [searchBarWidth, setSearchBarWidth] = useState('10%');
   const [showSearchBar, setShowSearchBar] = useState(false);
-  const containerRef = useRef(null);
 
   const handleSearch = () => {
     console.log('Searching for:', searchQuery);
@@ -70,26 +66,8 @@ const HeroSection = () => {
     };
   }, []);
 
-  // Background rotation
-  useEffect(() => {
-    if (isHovered || images.length <= 1) return;
-
-    const interval = setInterval(() => {
-      setCurrentImageIndex((prevIndex) =>
-        prevIndex === images.length - 1 ? 0 : prevIndex + 1
-      );
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [isHovered, currentImageIndex]);
-
-  const handleDotClick = (index) => {
-    setCurrentImageIndex(index);
-  };
-
   return (
     <Box
-      ref={containerRef}
       sx={{
         position: 'relative',
         height: '100vh',
@@ -106,32 +84,26 @@ const HeroSection = () => {
           left: 0,
           right: 0,
           bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.3)',
+          backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0.3)',
           zIndex: 1,
         }
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Background images */}
-      {images.map((image, index) => (
-        <Box
-          key={index}
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            backgroundImage: `url(${image.url})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            opacity: index === currentImageIndex ? 1 : 0,
-            transition: 'opacity 1s ease-in-out',
-            zIndex: 0
-          }}
-        />
-      ))}
+      {/* Background image */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundImage: `url(${isDarkMode ? bgDark : bgLight})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          zIndex: 0,
+          transition: 'background-image 0.5s ease-in-out'
+        }}
+      />
 
       {/* Content */}
       <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 2, textAlign: 'center' }}>
@@ -139,6 +111,7 @@ const HeroSection = () => {
           variant="h1"
           sx={{
             fontWeight: 800,
+            textShadow: isDarkMode ? '2px 2px 6px rgba(255, 255, 255, 0)' : '2px 2px 6px rgba(0, 0, 0, 0.5)',
             mb: 3,
             fontSize: { xs: '2.5rem', md: '4rem' },
             minHeight: '4rem',
@@ -164,6 +137,7 @@ const HeroSection = () => {
             mb: 4,
             fontSize: { xs: '1.2rem', md: '1.5rem' },
             minHeight: '1.5rem',
+            textShadow: isDarkMode ? '2px 2px 6px rgba(255, 255, 255, 0)' : '2px 2px 6px rgba(0, 0, 0, 0.5)',
             '&::after': {
               content: '""',
               borderRight: typedSubtitle.length < staticContent.subtitle.length ? '2px solid white' : 'none',
@@ -252,34 +226,6 @@ const HeroSection = () => {
           </Box>
         )}
       </Container>
-
-      {/* Dot Indicators */}
-      {images.length > 1 && (
-        <Box sx={{
-          position: 'absolute',
-          bottom: '40px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 2
-        }}>
-          {images.map((_, index) => (
-            <Box
-              key={index}
-              onClick={() => handleDotClick(index)}
-              sx={{
-                width: 14,
-                height: 14,
-                borderRadius: '50%',
-                backgroundColor: index === currentImageIndex ? 'primary.main' : 'rgba(255,255,255,0.5)',
-                cursor: 'pointer',
-                display: 'inline-block',
-                mx: 0.75,
-                transition: 'background-color 0.3s ease'
-              }}
-            />
-          ))}
-        </Box>
-      )}
     </Box>
   );
 };

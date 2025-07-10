@@ -1,1379 +1,1039 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { articlesAPI } from '../services/api';
-import {
-  Container,
-  TextField,
-  Button,
-  Typography,
-  Box,
-  Paper,
-  Alert,
-  useTheme,
-  ButtonGroup,
-  IconButton,
-  Divider,
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { 
+  Box, 
+  Button, 
+  Container, 
+  Paper, 
+  TextField, 
+  Typography, 
+  Alert, 
+  IconButton, 
+  Tooltip, 
+  useTheme, 
+  Drawer, 
+  Divider, 
+  Chip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Badge,
+  Fab,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
+  Slider,
+  Card,
+  CardContent,
   Menu,
-  MenuItem,
-  Tooltip,
-  Select,
-  FormControl,
-  InputLabel
+  ListItemIcon,
+  ListItemText,
+  Stack,
+  Tab,
+  Tabs,
+  Grid,
+  LinearProgress,
+  InputAdornment  // Added missing import
 } from '@mui/material';
-import Layout from '../components/Layout/Layout';
-import { Helmet } from 'react-helmet';
 import {
   FormatBold,
   FormatItalic,
   FormatUnderlined,
+  FormatStrikethrough,
+  FormatQuote,
   FormatListBulleted,
   FormatListNumbered,
-  Link,
   FormatAlignLeft,
   FormatAlignCenter,
   FormatAlignRight,
-  FormatClear,
-  CloudUpload,
-  Delete,
+  FormatAlignJustify,
+  Link as LinkIcon,
+  Image as ImageIcon,
+  Settings as SettingsIcon,
+  Publish as PublishIcon,
+  Save as SaveIcon,
+  Preview as PreviewIcon,
+  Fullscreen,
+  FullscreenExit,
   Palette,
-  FormatSize,
-  FontDownload
+  Code,
+  TableChart,
+  VideoLibrary,
+  Schedule,
+  Visibility,
+  ExpandMore,
+  Add,
+  Delete,
+  CloudUpload,
+  Undo,
+  Redo,
+  FindReplace,
+  Spellcheck,
+  AutoFixHigh,
+  Analytics,
+  Share,
+  BookmarkBorder,
+  Category,
+  Label,
+  Psychology,
+  Timer,
+  MenuBook,
+  Assessment,
+  TrendingUp,
+  AutoAwesome,
+  ContentCopy,
+  VolumeUp,
+  Translate,
+  ChatBubbleOutline,
+  AccessTime
 } from '@mui/icons-material';
 
 const SubmitArticlePage = () => {
   const theme = useTheme();
   const [formData, setFormData] = useState({
     title: '',
-    author: '',
-    content: '',
+    subtitle: '',
     summary: '',
+    content: '',
+    tags: [],
+    category: '',
+    metaDescription: '',
+    slug: '',
+    readingTime: 0,
+    publishAt: null,
+    status: 'draft'
   });
-  const [savedRange, setSavedRange] = useState(null);
-  const [status, setStatus] = useState({ message: '', type: '' });
-  const [attachedImage, setAttachedImage] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [formatStates, setFormatStates] = useState({
-    bold: false,
-    italic: false,
-    underline: false,
-    alignLeft: false,
-    alignCenter: false,
-    alignRight: false
-  });
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('');
-  const [linkText, setLinkText] = useState('');
-  const [colorMenuAnchor, setColorMenuAnchor] = useState(null);
-  const [fontSizeMenuAnchor, setFontSizeMenuAnchor] = useState(null);
-  const [fontFamilyMenuAnchor, setFontFamilyMenuAnchor] = useState(null);
-  const [selectedRange, setSelectedRange] = useState(null);
-  const [currentFontSize, setCurrentFontSize] = useState('14px');
-  const [currentFontFamily, setCurrentFontFamily] = useState('Arial');
-  const [isToolbarSticky, setIsToolbarSticky] = useState(false);
   
-  const contentEditableRef = useRef(null);
+  const [editorState, setEditorState] = useState({
+    isFullscreen: false,
+    isDistraction: false,
+    fontSize: 16,
+    lineHeight: 1.6,
+    maxWidth: 800,
+    showWordCount: true,
+    showReadingTime: true,
+    enableSpellcheck: true,
+    enableGrammarCheck: true,
+    enableAutoSave: true,
+    saveInterval: 30000
+  });
+
+  const [ui, setUi] = useState({
+    sidebarOpen: false,
+    sidebarTab: 0,
+    formatMenuAnchor: null,
+    insertMenuAnchor: null,
+    linkDialogOpen: false,
+    imageDialogOpen: false,
+    tableDialogOpen: false,
+    previewMode: false,
+    aiAssistOpen: false
+  });
+
+  const [status, setStatus] = useState({ message: '', type: '', progress: 0 });
+  const [stats, setStats] = useState({
+    wordCount: 0,
+    charCount: 0,
+    paragraphCount: 0,
+    readingTime: 0,
+    readabilityScore: 0
+  });
+
+  const [featuredImage, setFeaturedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [gallery, setGallery] = useState([]);
+  const [categories] = useState(['Technology', 'Business', 'Science', 'Health', 'Entertainment', 'Sports']);
+  const [recentTags] = useState(['React', 'JavaScript', 'Web Development', 'AI', 'Machine Learning']);
+  const [newTag, setNewTag] = useState('');
+  
+  const editorRef = useRef(null);
+  const autoSaveRef = useRef(null);
   const fileInputRef = useRef(null);
-  const editorContainerRef = useRef(null);
-  const toolbarRef = useRef(null);
 
-  // Font sizes available
-  const fontSizes = [
-    { label: '8', value: '8px' },
-    { label: '9', value: '9px' },
-    { label: '10', value: '10px' },
-    { label: '11', value: '11px' },
-    { label: '12', value: '12px' },
-    { label: '14', value: '14px' },
-    { label: '16', value: '16px' },
-    { label: '18', value: '18px' },
-    { label: '20', value: '20px' },
-    { label: '22', value: '22px' },
-    { label: '24', value: '24px' },
-    { label: '26', value: '26px' },
-    { label: '28', value: '28px' },
-    { label: '32', value: '32px' },
-    { label: '36', value: '36px' },
-    { label: '48', value: '48px' },
-    { label: '72', value: '72px' }
-  ];
-
-  // Font families available
-  const fontFamilies = [
-    { label: 'Arial', value: 'Arial, sans-serif' },
-    { label: 'Helvetica', value: 'Helvetica, sans-serif' },
-    { label: 'Times New Roman', value: '"Times New Roman", serif' },
-    { label: 'Times', value: 'Times, serif' },
-    { label: 'Georgia', value: 'Georgia, serif' },
-    { label: 'Verdana', value: 'Verdana, sans-serif' },
-    { label: 'Courier New', value: '"Courier New", monospace' },
-    { label: 'Lucida Console', value: '"Lucida Console", monospace' },
-    { label: 'Impact', value: 'Impact, sans-serif' },
-    { label: 'Comic Sans MS', value: '"Comic Sans MS", cursive' },
-    { label: 'Trebuchet MS', value: '"Trebuchet MS", sans-serif' },
-    { label: 'Arial Black', value: '"Arial Black", sans-serif' },
-    { label: 'Palatino', value: 'Palatino, serif' },
-    { label: 'Garamond', value: 'Garamond, serif' },
-    { label: 'Bookman', value: 'Bookman, serif' },
-    { label: 'Tahoma', value: 'Tahoma, sans-serif' },
-    { label: 'Calibri', value: 'Calibri, sans-serif' },
-    { label: 'Cambria', value: 'Cambria, serif' },
-    { label: 'Dancing Script', value: '"Dancing Script", cursive' },
-    { label: 'Pacifico', value: '"Pacifico", cursive' },
-    { label: 'Indie Flower', value: '"Indie Flower", cursive' },
-    { label: 'Shadows Into Light', value: '"Shadows Into Light", cursive' },
-    { label: 'Amatic SC', value: '"Amatic SC", cursive' },
-    { label: 'Caveat', value: '"Caveat", cursive' },
-    { label: 'Satisfy', value: '"Satisfy", cursive' },
-    { label: 'Great Vibes', value: '"Great Vibes", cursive' },
-  ];
-
-  // Color palette for text
-  const textColors = [
-    { name: 'Default', value: 'inherit' },
-    { name: 'White', value: '#ffffff' },
-    { name: 'Light Gray', value: '#e0e0e0' },
-    { name: 'Gray', value: '#9e9e9e' },
-    { name: 'Dark Gray', value: '#424242' },
-    { name: 'Red', value: '#f44336' },
-    { name: 'Pink', value: '#e91e63' },
-    { name: 'Purple', value: '#9c27b0' },
-    { name: 'Deep Purple', value: '#673ab7' },
-    { name: 'Indigo', value: '#3f51b5' },
-    { name: 'Blue', value: '#2196f3' },
-    { name: 'Light Blue', value: '#03a9f4' },
-    { name: 'Cyan', value: '#00bcd4' },
-    { name: 'Teal', value: '#009688' },
-    { name: 'Green', value: '#4caf50' },
-    { name: 'Light Green', value: '#8bc34a' },
-    { name: 'Lime', value: '#cddc39' },
-    { name: 'Yellow', value: '#ffeb3b' },
-    { name: 'Amber', value: '#ffc107' },
-    { name: 'Orange', value: '#ff9800' },
-    { name: 'Deep Orange', value: '#ff5722' }
-  ];
-
-  // Clean LTR setup and flexible link styling
-  useEffect(() => {
-    if (contentEditableRef.current) {
-      // Add global CSS for LTR editing and flexible link styling
-      const style = document.createElement('style');
-      style.id = 'ltr-editor-styles';
-      style.textContent = `
-        .ltr-content-editor {
-          direction: ltr !important;
-          text-align: left !important;
-          unicode-bidi: embed !important;
-        }
-        .ltr-content-editor * {
-          direction: ltr !important;
-          unicode-bidi: embed !important;
-        }
-        .ltr-content-editor p,
-        .ltr-content-editor div {
-          margin: 0;
-          padding: 0;
-        }
-        .ltr-content-editor a {
-          color: #bb86fc !important;
-          cursor: pointer !important;
-        }
-        .ltr-content-editor a:hover {
-          color: #cf6679 !important;
-        }
-        .ltr-content-editor a.no-underline {
-          text-decoration: none !important;
-        }
-        .ltr-content-editor a:not(.no-underline) {
-          text-decoration: underline !important;
-        }
-        .ltr-content-editor [style*="text-align: center"] {
-          text-align: center !important;
-        }
-        .ltr-content-editor [style*="text-align: right"] {
-          text-align: right !important;
-        }
-        .ltr-content-editor [style*="text-align: left"] {
-          text-align: left !important;
-        }
-        .sticky-toolbar {
-          position: fixed !important;
-          top: 0 !important;
-          left: 0 !important;
-          right: 0 !important;
-          z-index: 1300 !important;
-          background-color: ${theme.palette.background.paper} !important;
-          border-bottom: 1px solid ${theme.palette.divider} !important;
-          box-shadow: ${theme.shadows[4]} !important;
-          padding: 8px 16px !important;
-        }
-      `;
-      
-      // Remove existing style if it exists
-      const existingStyle = document.getElementById('ltr-editor-styles');
-      if (existingStyle) {
-        existingStyle.remove();
-      }
-      
-      document.head.appendChild(style);
-      
-      return () => {
-        const styleToRemove = document.getElementById('ltr-editor-styles');
-        if (styleToRemove) {
-          styleToRemove.remove();
-        }
-      };
-    }
-  }, [theme]);
-
-  // Enhanced format state checking including font properties
-  const updateFormatStates = () => {
-    if (!contentEditableRef.current) return;
+  // Content analysis and statistics
+  const analyzeContent = useCallback((content) => {
+    const text = content.replace(/<[^>]*>/g, '');
+    const words = text.trim().split(/\s+/).filter(word => word.length > 0);
+    const chars = text.length;
+    const paragraphs = content.split('</p>').length - 1;
+    const readingTime = Math.ceil(words.length / 200);
     
-    try {
-      const selection = window.getSelection();
-      let alignLeft = false, alignCenter = false, alignRight = false;
-      let fontSize = '14px', fontFamily = 'Arial';
-      
-      if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        let element = range.commonAncestorContainer;
-        
-        // Find the element for checking styles
-        while (element && element.nodeType !== Node.ELEMENT_NODE) {
-          element = element.parentNode;
-        }
-        
-        // Check for font properties
-        if (element && element !== contentEditableRef.current) {
-          const computedStyle = window.getComputedStyle(element);
-          fontSize = computedStyle.fontSize || '14px';
-          fontFamily = computedStyle.fontFamily || 'Arial';
-        }
-        
-        // Find the block-level element for alignment checking
-        let blockElement = element;
-        while (blockElement && blockElement !== contentEditableRef.current) {
-          if (blockElement.style && blockElement.style.textAlign) {
-            const align = blockElement.style.textAlign;
-            alignLeft = align === 'left';
-            alignCenter = align === 'center';
-            alignRight = align === 'right';
-            break;
-          }
-          blockElement = blockElement.parentNode;
-        }
-      }
-      
-      setFormatStates({
-        bold: document.queryCommandState('bold'),
-        italic: document.queryCommandState('italic'),
-        underline: document.queryCommandState('underline'),
-        alignLeft,
-        alignCenter,
-        alignRight
-      });
-      
-      setCurrentFontSize(fontSize);
-      setCurrentFontFamily(fontFamily.split(',')[0].replace(/['"]/g, ''));
-    } catch (error) {
-      // Ignore errors from queryCommandState
-    }
-  };
+    // Simple readability score (Flesch Reading Ease approximation)
+    const avgWordsPerSentence = words.length / (text.split(/[.!?]+/).length - 1 || 1);
+    const avgSyllablesPerWord = words.reduce((acc, word) => acc + countSyllables(word), 0) / words.length;
+    const readabilityScore = Math.max(0, Math.min(100, 206.835 - (1.015 * avgWordsPerSentence) - (84.6 * avgSyllablesPerWord)));
 
-  // Check formatting states when selection changes
-  useEffect(() => {
-    const handleSelectionChange = () => {
-      updateFormatStates();
-      
-      // Auto-scroll to cursor position
-      const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0) return;
-
-      const range = selection.getRangeAt(0).cloneRange();
-      const dummy = document.createElement('span');
-      dummy.textContent = '\u200B'; // zero-width space
-      dummy.style.display = 'inline-block';
-
-      range.insertNode(dummy);
-      dummy.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-
-      // clean up
-      requestAnimationFrame(() => {
-        dummy.parentNode?.removeChild(dummy);
-      });
-    };
-
-    document.addEventListener('selectionchange', handleSelectionChange);
-    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+    setStats({
+      wordCount: words.length,
+      charCount: chars,
+      paragraphCount: paragraphs,
+      readingTime,
+      readabilityScore: Math.round(readabilityScore)
+    });
   }, []);
 
-  // Enhanced scroll handler for always-sticky toolbar
+  const countSyllables = (word) => {
+    return word.toLowerCase().replace(/[^a-z]/g, '').replace(/e$/, '').replace(/[aeiouy]{2,}/g, 'a').match(/[aeiouy]/g)?.length || 1;
+  };
+
+  // Auto-save functionality
   useEffect(() => {
-    const handleScroll = () => {
-      if (editorContainerRef.current && toolbarRef.current) {
-        const editorRect = editorContainerRef.current.getBoundingClientRect();
-        const toolbarHeight = toolbarRef.current.offsetHeight;
+    if (editorState.enableAutoSave) {
+      autoSaveRef.current = setInterval(() => {
+        if (formData.title || formData.content) {
+          setStatus({ message: 'Auto-saving...', type: 'info', progress: 50 });
+          setTimeout(() => {
+            setStatus({ message: 'Saved', type: 'success', progress: 100 });
+            setTimeout(() => setStatus({ message: '', type: '', progress: 0 }), 2000);
+          }, 1000);
+        }
+      }, editorState.saveInterval);
+    }
+
+    return () => {
+      if (autoSaveRef.current) {
+        clearInterval(autoSaveRef.current);
       }
     };
+  }, [editorState.enableAutoSave, editorState.saveInterval, formData.title, formData.content]);
 
-    window.addEventListener('scroll', handleScroll);
-    handleScroll(); // Check initial state
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  // Content change handler
+  const handleContentChange = (content) => {
+    setFormData(prev => ({ ...prev, content }));
+    analyzeContent(content);
   };
 
-  // Save cursor position with better range cloning
-  const saveCursorPosition = () => {
-    const selection = window.getSelection();
-    if (selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0);
-      return range.cloneRange();
-    }
-    return null;
-  };
+  // Format toolbar actions
+  const formatActions = [
+    { icon: FormatBold, label: 'Bold', action: () => document.execCommand('bold') },
+    { icon: FormatItalic, label: 'Italic', action: () => document.execCommand('italic') },
+    { icon: FormatUnderlined, label: 'Underline', action: () => document.execCommand('underline') },
+    { icon: FormatStrikethrough, label: 'Strikethrough', action: () => document.execCommand('strikethrough') },
+    { icon: FormatQuote, label: 'Quote', action: () => document.execCommand('formatBlock', false, 'blockquote') },
+    { icon: FormatListBulleted, label: 'Bullet List', action: () => document.execCommand('insertUnorderedList') },
+    { icon: FormatListNumbered, label: 'Numbered List', action: () => document.execCommand('insertOrderedList') },
+    { icon: Code, label: 'Code', action: () => document.execCommand('formatBlock', false, 'pre') }
+  ];
 
-  // Restore cursor position
-  const restoreCursorPosition = (range) => {
-    if (range) {
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      try {
-        selection.addRange(range);
-      } catch (error) {
-        console.warn('Failed to restore selection:', error);
-      }
-    }
-  };
-
-  // Updated content change handler
-  const handleContentChange = () => {
-    if (contentEditableRef.current) {
-      const content = contentEditableRef.current.innerHTML;
-      setFormData(prev => ({ ...prev, content }));
-    }
-  };
-
-  // Handle content blur
-  const handleContentBlur = () => {
-    handleContentChange();
-  };
+  const alignActions = [
+    { icon: FormatAlignLeft, label: 'Align Left', action: () => document.execCommand('justifyLeft') },
+    { icon: FormatAlignCenter, label: 'Align Center', action: () => document.execCommand('justifyCenter') },
+    { icon: FormatAlignRight, label: 'Align Right', action: () => document.execCommand('justifyRight') },
+    { icon: FormatAlignJustify, label: 'Justify', action: () => document.execCommand('justifyFull') }
+  ];
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        setStatus({ message: 'Please select a valid image file.', type: 'error' });
+      if (file.size > 10 * 1024 * 1024) {
+        setStatus({ message: 'Image size must be less than 10MB.', type: 'error' });
         return;
       }
-      
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setStatus({ message: 'Image size must be less than 5MB.', type: 'error' });
-        return;
-      }
-
-      setAttachedImage(file);
-      
-      // Create preview
+      setFeaturedImage(file);
       const reader = new FileReader();
-      reader.onload = (e) => {
-        setImagePreview(e.target.result);
-      };
+      reader.onload = (event) => setImagePreview(event.target.result);
       reader.readAsDataURL(file);
-      
-      // Clear any previous error messages
-      setStatus({ message: '', type: '' });
     }
   };
 
-  const removeImage = () => {
-    setAttachedImage(null);
-    setImagePreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setStatus({ message: '', type: '' });
-
-    // Get the latest content from the editor
-    const currentContent = contentEditableRef.current ? contentEditableRef.current.innerHTML : formData.content;
-
-    if (!formData.title || !formData.author || !currentContent) {
-      setStatus({ message: 'Title, Author, and Content are required.', type: 'error' });
+  const handlePublish = async () => {
+    if (!formData.title || !formData.content) {
+      setStatus({ message: 'Title and content are required.', type: 'error' });
       return;
     }
 
-    try {
-      // Create FormData to handle file upload
-      const submitData = new FormData();
-      submitData.append('title', formData.title);
-      submitData.append('author', formData.author);
-      submitData.append('content', currentContent);
-      submitData.append('summary', formData.summary);
-      
-      if (attachedImage) {
-        submitData.append('image', attachedImage);
-      }
+    setStatus({ message: 'Publishing...', type: 'info', progress: 0 });
+    
+    // Simulate publishing process
+    for (let i = 0; i <= 100; i += 20) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+      setStatus({ message: 'Publishing...', type: 'info', progress: i });
+    }
+    
+    setStatus({ message: 'Article published successfully!', type: 'success', progress: 100 });
+    setTimeout(() => setStatus({ message: '', type: '', progress: 0 }), 3000);
+  };
 
-      await articlesAPI.create(submitData);
-      setStatus({ message: 'Article submitted successfully! It will be reviewed by an admin.', type: 'success' });
-      setFormData({ title: '', author: '', content: '', summary: '' });
-      setAttachedImage(null);
-      setImagePreview(null);
-      if (contentEditableRef.current) {
-        contentEditableRef.current.innerHTML = '';
-      }
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    } catch (error) {
-      setStatus({ message: 'Failed to submit article. Please try again.', type: 'error' });
-      console.error('Submission error:', error);
+  const toggleFullscreen = () => {
+    setEditorState(prev => ({ ...prev, isFullscreen: !prev.isFullscreen }));
+  };
+
+  const toggleDistraction = () => {
+    setEditorState(prev => ({ ...prev, isDistraction: !prev.isDistraction }));
+  };
+
+  const handleAddTag = () => {
+    if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
+      setFormData(prev => ({ 
+        ...prev, 
+        tags: [...prev.tags, newTag.trim()] 
+      }));
+      setNewTag('');
     }
   };
 
-  // Get the current block element for alignment
-  const getCurrentBlockElement = () => {
-    const selection = window.getSelection();
-    if (selection.rangeCount === 0) return null;
-    
-    let element = selection.getRangeAt(0).commonAncestorContainer;
-    
-    // Navigate up to find a block-level element
-    while (element && element !== contentEditableRef.current) {
-      if (element.nodeType === Node.ELEMENT_NODE) {
-        const tagName = element.tagName.toLowerCase();
-        if (['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'].includes(tagName)) {
-          return element;
-        }
-      }
-      element = element.parentNode;
-    }
-    
-    return null;
+  const handleRemoveTag = (tagToRemove) => {
+    setFormData(prev => ({ 
+      ...prev, 
+      tags: prev.tags.filter(tag => tag !== tagToRemove) 
+    }));
   };
 
-  // Wrap selection in paragraph if needed
-  const ensureBlockElement = () => {
-    const selection = window.getSelection();
-    if (selection.rangeCount === 0) return null;
-    
-    let blockElement = getCurrentBlockElement();
-    
-    if (!blockElement) {
-      // Create a paragraph to wrap the selection
-      const range = selection.getRangeAt(0);
-      const p = document.createElement('p');
-      
-      try {
-        range.surroundContents(p);
-        blockElement = p;
-      } catch (error) {
-        // If surroundContents fails, extract and wrap
-        const contents = range.extractContents();
-        p.appendChild(contents);
-        range.insertNode(p);
-        blockElement = p;
-      }
-      
-      // Restore selection
-      const newRange = document.createRange();
-      newRange.selectNodeContents(p);
-      selection.removeAllRanges();
-      selection.addRange(newRange);
-    }
-    
-    return blockElement;
-  };
+  const SidebarContent = () => (
+    <Box sx={{ width: 400, height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+        <Typography variant="h6">Advanced Settings</Typography>
+        <Tabs value={ui.sidebarTab} onChange={(e, v) => setUi(prev => ({ ...prev, sidebarTab: v }))}>
+          <Tab label="SEO" />
+          <Tab label="Publishing" />
+          <Tab label="Analytics" />
+        </Tabs>
+      </Box>
 
-  // Enhanced format text function with fixed font size and family support
-  const formatText = (command, value = null) => {
-    if (!contentEditableRef.current) return;
-    
-    contentEditableRef.current.focus();
-    
-    try {
-      if (command.startsWith('justify')) {
-        const selection = window.getSelection();
-        if (selection.rangeCount === 0) return;
+      <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+        {ui.sidebarTab === 0 && (
+          <Stack spacing={3}>
+            <TextField
+              fullWidth
+              label="Meta Description"
+              value={formData.metaDescription}
+              onChange={(e) => setFormData(prev => ({ ...prev, metaDescription: e.target.value }))}
+              multiline
+              rows={3}
+              helperText={`${formData.metaDescription.length}/160 characters`}
+            />
 
-        const range = selection.getRangeAt(0);
-        const fragment = range.cloneContents();
-        const blockTags = ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'];
+            <TextField
+              fullWidth
+              label="URL Slug"
+              value={formData.slug}
+              onChange={(e) => setFormData(prev => ({ ...prev, slug: e.target.value }))}
+              helperText="URL-friendly version of the title"
+            />
 
-        // Helper to check if element is block-level
-        const isBlockElement = (el) =>
-          el.nodeType === Node.ELEMENT_NODE && blockTags.includes(el.tagName.toLowerCase());
-
-        // Collect affected blocks
-        const blocks = new Set();
-        let start = range.startContainer;
-        let end = range.endContainer;
-
-        // Walk from start to top-level block
-        while (start && start !== contentEditableRef.current) {
-          if (isBlockElement(start)) {
-            blocks.add(start);
-            break;
-          }
-          start = start.parentNode;
-        }
-
-        while (end && end !== contentEditableRef.current) {
-          if (isBlockElement(end)) {
-            blocks.add(end);
-            break;
-          }
-          end = end.parentNode;
-        }
-
-        // If no blocks found, apply to current line
-        if (blocks.size === 0) {
-          const block = ensureBlockElement();
-          if (block) blocks.add(block);
-        }
-
-        // Clear previous alignments and apply new one
-        blocks.forEach((el) => {
-          el.style.textAlign = ''; // Clear existing
-          switch (command) {
-            case 'justifyLeft':
-              el.style.textAlign = 'left';
-              break;
-            case 'justifyCenter':
-              el.style.textAlign = 'center';
-              break;
-            case 'justifyRight':
-              el.style.textAlign = 'right';
-              break;
-          }
-        });
-
-      } else if (command === 'underline') {
-        // Enhanced underline handling for links
-        const selection = window.getSelection();
-        if (selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          const selectedElement = range.commonAncestorContainer;
-          
-          // Check if we're in a link
-          let linkElement = selectedElement;
-          while (linkElement && linkElement !== contentEditableRef.current) {
-            if (linkElement.nodeType === Node.ELEMENT_NODE && linkElement.tagName === 'A') {
-              break;
-            }
-            linkElement = linkElement.parentNode;
-          }
-          
-          if (linkElement && linkElement.tagName === 'A') {
-            // Toggle underline class on the link
-            if (linkElement.classList.contains('no-underline')) {
-              linkElement.classList.remove('no-underline');
-            } else {
-              linkElement.classList.add('no-underline');
-            }
-          } else {
-            // Regular underline command for non-links
-            document.execCommand(command, false, value);
-          }
-        }
-      } else if (command === 'fontSize') {
-        const selection = window.getSelection();
-        if (!selection.rangeCount) return;
-
-        const range = selection.getRangeAt(0);
-        
-        if (range.collapsed) {
-          // No selection - create a span for future typing
-          const span = document.createElement('span');
-          span.style.fontSize = value;
-          span.innerHTML = '\u200B'; // zero-width space
-
-          range.insertNode(span);
-
-          // Move cursor inside the span
-          const newRange = document.createRange();
-          newRange.setStart(span, 1);
-          newRange.collapse(true);
-          selection.removeAllRanges();
-          selection.addRange(newRange);
-        } else {
-          // Text is selected - wrap it in a span
-          const selectedContent = range.extractContents();
-          const span = document.createElement('span');
-          span.style.fontSize = value;
-          span.appendChild(selectedContent);
-          
-          range.insertNode(span);
-          
-          // Restore selection around the span content
-          const newRange = document.createRange();
-          newRange.selectNodeContents(span);
-          selection.removeAllRanges();
-          selection.addRange(newRange);
-        }
-
-      } else if (command === 'fontName') {
-        const selection = window.getSelection();
-        if (!selection.rangeCount) return;
-
-        const range = selection.getRangeAt(0);
-        
-        if (range.collapsed) {
-          // No selection - create a span for future typing
-          const span = document.createElement('span');
-          span.style.fontFamily = value;
-          span.innerHTML = '\u200B'; // zero-width space
-
-          range.insertNode(span);
-
-          // Move cursor inside span
-          const newRange = document.createRange();
-          newRange.setStart(span, 1);
-          newRange.collapse(true);
-
-          selection.removeAllRanges();
-          selection.addRange(newRange);
-        } else {
-          // Text is selected - wrap it in a span
-          const selectedContent = range.extractContents();
-          const span = document.createElement('span');
-          span.style.fontFamily = value;
-          span.appendChild(selectedContent);
-          
-          range.insertNode(span);
-          
-          // Restore selection around the span content
-          const newRange = document.createRange();
-          newRange.selectNodeContents(span);
-          selection.removeAllRanges();
-          selection.addRange(newRange);
-        }
-      } else {
-        // Regular formatting commands
-        document.execCommand(command, false, value);
-      }
-    } catch (error) {
-      console.warn('execCommand failed:', error);
-    }
-    
-    handleContentChange();
-    updateFormatStates();
-  };
-
-  // Handle font size change with proper selection handling
-  const handleFontSizeChange = (size) => {
-    // Focus the editor first
-    contentEditableRef.current?.focus();
-    
-    // Restore saved range if available
-    if (savedRange) {
-      restoreCursorPosition(savedRange);
-      setSavedRange(null);
-    }
-
-    formatText('fontSize', size);
-    setCurrentFontSize(size);
-    setFontSizeMenuAnchor(null);
-  };
-
-  // Handle font family change with proper selection handling
-  const handleFontFamilyChange = (family) => {
-    // Focus the editor first
-    contentEditableRef.current?.focus();
-    
-    // Restore saved range if available
-    if (savedRange) {
-      restoreCursorPosition(savedRange);
-      setSavedRange(null);
-    }
-
-    formatText('fontName', family);
-    setCurrentFontFamily(family.split(',')[0].replace(/['"]/g, ''));
-    setFontFamilyMenuAnchor(null);
-  };
-
-  // Open link dialog
-  const openLinkDialog = () => {
-    const selection = window.getSelection();
-    if (selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0);
-      setSelectedRange(range);
-      setLinkText(selection.toString() || '');
-      setLinkUrl('');
-      setLinkDialogOpen(true);
-    }
-  };
-
-  // Handle link creation
-  const handleLinkCreate = () => {
-    if (!selectedRange || !linkUrl) return;
-    
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(selectedRange);
-    
-    if (linkText && selection.toString() !== linkText) {
-      // Replace selected text with link text
-      document.execCommand('insertText', false, linkText);
-      // Re-select the inserted text
-      const newRange = document.createRange();
-      const textNode = selection.anchorNode;
-      newRange.setStart(textNode, selection.anchorOffset - linkText.length);
-      newRange.setEnd(textNode, selection.anchorOffset);
-      selection.removeAllRanges();
-      selection.addRange(newRange);
-    }
-    
-    document.execCommand('createLink', false, linkUrl);
-    
-    setLinkDialogOpen(false);
-    setLinkUrl('');
-    setLinkText('');
-    setSelectedRange(null);
-    
-    setTimeout(() => handleContentChange(), 10);
-  };
-
-  // Handle color selection
-  const handleColorSelect = (color) => {
-    if (!contentEditableRef.current) return;
-    
-    contentEditableRef.current.focus();
-    
-    try {
-      if (color === 'inherit') {
-        document.execCommand('removeFormat', false, null);
-      } else {
-        document.execCommand('foreColor', false, color);
-      }
-    } catch (error) {
-      console.warn('Color command failed:', error);
-    }
-    
-    setColorMenuAnchor(null);
-    setTimeout(() => handleContentChange(), 10);
-  };
-
-  // Enhanced key handler for Microsoft Word-like behavior
-  const handleEditorKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-
-      const selection = window.getSelection();
-      if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-
-        const p = document.createElement('p');
-        const br = document.createElement('br');
-        p.appendChild(br);
-
-        range.deleteContents();
-        range.insertNode(p);
-
-        // Move cursor AFTER the <br> inside the new <p>
-        const newRange = document.createRange();
-        newRange.setStart(p, 1); // after the <br>
-        newRange.collapse(true);
-
-        selection.removeAllRanges();
-        selection.addRange(newRange);
-      }
-
-      setTimeout(() => handleContentChange(), 10);
-    } else if (e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete') {
-      setTimeout(() => {
-        handleContentChange();
-        updateFormatStates();
-      }, 10);
-    }
-  };
-
-  // Handle paste with cursor preservation
-  const handlePaste = (e) => {
-    e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData('text');
-    
-    try {
-      document.execCommand('insertText', false, text);
-    } catch (error) {
-      // Fallback for browsers that don't support insertText
-      const selection = window.getSelection();
-      if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
-        range.insertNode(document.createTextNode(text));
-        range.collapse(false);
-      }
-    }
-    
-    setTimeout(() => handleContentChange(), 10);
-  };
-
-
-  return (
-    <>
-      <Helmet>
-        <title>Submit Article | Cognara</title>
-        <meta name="description" content="Submit your article to the Cognara community." />
-      </Helmet>
-      
-      <Container maxWidth={false} sx={{ py: 5}}>
-        {/* Header Section */}
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <Typography 
-            variant="h3" 
-            component="h1" 
-            sx={{ 
-              fontWeight: 700,
-              mb: 1,
-              color: theme.palette.text.primary,
-              paddingTop: '1rem',
-              paddingBottom: '1rem',
-              fontSize: '2.5rem',
-            }}
-          >
-            Submit an Article
-          </Typography>
-          <Typography 
-            variant="h6" 
-            component="p" 
-            sx={{ 
-              mx: 'auto',
-              color: theme.palette.text.secondary,
-              mb: 3
-            }}
-          >
-            Share your knowledge with the Cognara community
-          </Typography>
-          <Divider sx={{ my: 2 }} />
-        </Box>
-
-        {/* Status Alert */}
-        {status.message && (
-          <Alert severity={status.type} sx={{ mb: 3, mx: 'auto', maxWidth: 600 }}>
-            {status.message}
-          </Alert>
+            <Card>
+              <CardContent>
+                <Typography variant="subtitle2" gutterBottom>SEO Preview</Typography>
+                <Typography variant="body2" color="primary" sx={{ textDecoration: 'underline' }}>
+                  {formData.title || 'Your Article Title'}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {formData.metaDescription || 'Your meta description will appear here...'}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Stack>
         )}
 
-        {/* Form Section */}
-        <Paper elevation={0} sx={{ 
-          p: 4, 
-          backgroundColor: theme.palette.background.default,
-          borderRadius: 2,
-          borderLeft: `4px solid ${theme.palette.primary.main}`,
-          mx: 'auto'
-        }}>
-          <form onSubmit={handleSubmit}>
-            {/* Centered Form Fields */}
-            <Box sx={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              gap: 3,
-              mx: 'auto'
-            }}>
-              <TextField
-                fullWidth
-                label="Article Title"
-                name="title"
-                value={formData.title}
-                onChange={handleChange}
-                required
-                variant="outlined"
-                inputProps={{ dir: 'ltr' }}
-                sx={{ 
-                  '& .MuiInputBase-input': { 
-                    direction: 'ltr',
-                    textAlign: 'left'
-                  }
-                }}
-              />
-              <TextField
-                fullWidth
-                label="Author Name"
-                name="author"
-                value={formData.author}
-                onChange={handleChange}
-                required
-                variant="outlined"
-                inputProps={{ dir: 'ltr' }}
-                sx={{ 
-                  '& .MuiInputBase-input': { 
-                    direction: 'ltr',
-                    textAlign: 'left'
-                  }
-                }}
-              />
-              <TextField
-                fullWidth
-                label="Summary"
-                name="summary"
-                value={formData.summary}
-                onChange={handleChange}
-                helperText="A short summary that will appear in article listings."
-                variant="outlined"
-                multiline
-                rows={3}
-                inputProps={{ dir: 'ltr' }}
-                sx={{ 
-                  '& .MuiInputBase-input': { 
-                    direction: 'ltr',
-                    textAlign: 'left'
-                  }
-                }}
-              />
-            </Box>
-
-            {/* Image Upload Section */}
-            <Box sx={{ mt: 4, width: '100%' }}>
-              <Typography variant="subtitle1" gutterBottom sx={{ textAlign: 'center' }}>
-                Article Image (Optional)
-              </Typography>
-              <Box sx={{
-                border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 1,
-                p: 2,
-                backgroundColor: theme.palette.background.paper,
-                mx: 'auto',
-                textAlign: 'center'
-              }}>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  ref={fileInputRef}
-                  style={{ display: 'none' }}
-                />
-                
-                {!imagePreview ? (
-                  <Button
-                    variant="outlined"
-                    startIcon={<CloudUpload />}
-                    onClick={() => fileInputRef.current?.click()}
-                    sx={{ mb: 1 }}
-                  >
-                    Upload Image
-                  </Button>
-                ) : (
-                  <Box>
-                    <Box sx={{ position: 'relative', display: 'inline-block', mb: 2 }}>
-                      <img
-                        src={imagePreview}
-                        alt="Preview"
-                        style={{
-                          maxWidth: '300px',
-                          maxHeight: '200px',
-                          objectFit: 'contain',
-                          borderRadius: '4px'
-                        }}
-                      />
-                      <IconButton
-                        onClick={removeImage}
-                        sx={{
-                          position: 'absolute',
-                          top: -8,
-                          right: -8,
-                          backgroundColor: theme.palette.error.main,
-                          color: 'white',
-                          '&:hover': {
-                            backgroundColor: theme.palette.error.dark,
-                          }
-                        }}
-                        size="small"
-                      >
-                        <Delete fontSize="small" />
-                      </IconButton>
-                    </Box>
-                    <Typography variant="body2" color="textSecondary">
-                      {attachedImage?.name}
-                    </Typography>
-                  </Box>
-                )}
-                
-                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 1 }}>
-                  Maximum file size: 5MB. Supported formats: JPG, PNG, GIF, WebP
-                </Typography>
-              </Box>
-            </Box>
-
-            {/* Full Content Editor */}
-            <Box sx={{ mt: 4, width: '100%' }} ref={editorContainerRef}>
-              <Typography variant="subtitle1" gutterBottom sx={{ textAlign: 'center' }}>
-                Full Content
-              </Typography>
-              <Box sx={{
-                  border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: 1,
-                  mb: 1,
-                  p: 1,
-                  backgroundColor: theme.palette.background.paper,
-                  mx: 'auto',
-                  position: 'relative'
-                }}>
-                
-                {/* Sticky Toolbar */}
-                <Box
-                  ref={toolbarRef}
-                  sx={{
-                    position: isToolbarSticky ? 'sticky' : 'static',
-                    top: 0,
-                    zIndex: 1,
-                    backgroundColor: theme.palette.background.paper,
-                    borderBottom: isToolbarSticky ? `1px solid ${theme.palette.divider}` : 'none',
-                    py: isToolbarSticky ? 1 : 0,
-                    boxShadow: isToolbarSticky ? theme.shadows[1] : 'none'
-                  }}
-                >
-                  {/* Font Controls Row */}
-                  <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <Tooltip title="Font Family">
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<FontDownload />}
-                        onMouseDown={(e) => {
-                          e.preventDefault(); // prevent blur/focus loss
-                          const selection = window.getSelection();
-                          if (selection.rangeCount > 0) {
-                            setSavedRange(selection.getRangeAt(0));
-                          }
-                          setFontFamilyMenuAnchor(e.currentTarget);
-                        }}
-                        sx={{ minWidth: 120 }}
-                      >
-                        {currentFontFamily}
-                      </Button>
-                    </Tooltip>
-                    
-                    <Tooltip title="Font Size">
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<FormatSize />}
-                        onMouseDown={(e) => {
-                          e.preventDefault(); // prevents cursor from vanishing
-                          const selection = window.getSelection();
-                          if (selection.rangeCount > 0) {
-                            setSavedRange(selection.getRangeAt(0));
-                          }
-                          setFontSizeMenuAnchor(e.currentTarget);
-                        }}
-                        sx={{ minWidth: 80 }}
-                      >
-                        {currentFontSize.replace('px', '')}
-                      </Button>
-                    </Tooltip>
-                  </Box>
-
-                  {/* Formatting Controls Row */}
-                  <ButtonGroup size="small" sx={{ 
-                    flexWrap: 'wrap', 
-                    mb: 1,
-                    justifyContent: 'center'
-                  }}>
-                    <Tooltip title="Bold">
-                      <IconButton 
-                        onClick={() => formatText('bold')}
-                        sx={{
-                          backgroundColor: formatStates.bold ? theme.palette.primary.main : 'transparent',
-                          color: formatStates.bold ? theme.palette.primary.contrastText : 'inherit',
-                          '&:hover': {
-                            backgroundColor: formatStates.bold ? theme.palette.primary.dark : theme.palette.action.hover,
-                          }
-                        }}
-                      >
-                        <FormatBold fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Italic">
-                      <IconButton 
-                        onClick={() => formatText('italic')}
-                        sx={{
-                          backgroundColor: formatStates.italic ? theme.palette.primary.main : 'transparent',
-                          color: formatStates.italic ? theme.palette.primary.contrastText : 'inherit',
-                          '&:hover': {
-                            backgroundColor: formatStates.italic ? theme.palette.primary.dark : theme.palette.action.hover,
-                          }
-                        }}
-                      >
-                        <FormatItalic fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Underline (works on hyperlinks too)">
-                      <IconButton 
-                        onClick={() => formatText('underline')}
-                        sx={{
-                          backgroundColor: formatStates.underline ? theme.palette.primary.main : 'transparent',
-                          color: formatStates.underline ? theme.palette.primary.contrastText : 'inherit',
-                          '&:hover': {
-                            backgroundColor: formatStates.underline ? theme.palette.primary.dark : theme.palette.action.hover,
-                          }
-                        }}
-                      >
-                        <FormatUnderlined fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Bullet List">
-                      <IconButton onClick={() => formatText('insertUnorderedList')}>
-                        <FormatListBulleted fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Numbered List">
-                      <IconButton onClick={() => formatText('insertOrderedList')}>
-                        <FormatListNumbered fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Insert Link">
-                      <IconButton onClick={openLinkDialog}>
-                        <Link fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Align Left">
-                      <IconButton 
-                        onClick={() => formatText('justifyLeft')}
-                        sx={{
-                          backgroundColor: formatStates.alignLeft ? theme.palette.primary.main : 'transparent',
-                          color: formatStates.alignLeft ? theme.palette.primary.contrastText : 'inherit',
-                          '&:hover': {
-                            backgroundColor: formatStates.alignLeft ? theme.palette.primary.dark : theme.palette.action.hover,
-                          }
-                        }}
-                      >
-                        <FormatAlignLeft fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Align Center">
-                      <IconButton 
-                        onClick={() => formatText('justifyCenter')}
-                        sx={{
-                          backgroundColor: formatStates.alignCenter ? theme.palette.primary.main : 'transparent',
-                          color: formatStates.alignCenter ? theme.palette.primary.contrastText : 'inherit',
-                          '&:hover': {
-                            backgroundColor: formatStates.alignCenter ? theme.palette.primary.dark : theme.palette.action.hover,
-                          }
-                        }}
-                      >
-                        <FormatAlignCenter fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Align Right">
-                      <IconButton 
-                        onClick={() => formatText('justifyRight')}
-                        sx={{
-                          backgroundColor: formatStates.alignRight ? theme.palette.primary.main : 'transparent',
-                          color: formatStates.alignRight ? theme.palette.primary.contrastText : 'inherit',
-                          '&:hover': {
-                            backgroundColor: formatStates.alignRight ? theme.palette.primary.dark : theme.palette.action.hover,
-                          }
-                        }}
-                      >
-                        <FormatAlignRight fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Text Color">
-                      <IconButton onClick={(e) => setColorMenuAnchor(e.currentTarget)}>
-                        <Palette fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Clear Formatting">
-                      <IconButton onClick={() => formatText('removeFormat')}>
-                        <FormatClear fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </ButtonGroup>
-                </Box>
-                
-                <Box
-                  ref={contentEditableRef}
-                  className="ltr-content-editor"
-                  contentEditable
-                  onInput={handleContentChange}
-                  onBlur={handleContentBlur}
-                  onKeyDown={handleEditorKeyDown}
-                  onPaste={handlePaste}
-                  dir="ltr"
-                  sx={{
-                    minHeight: '300px',
-                    padding: '16px',
-                    border: `1px solid ${theme.palette.divider}`,
-                    borderRadius: '4px',
-                    backgroundColor: theme.palette.background.paper,
-                    outline: 'none',
-                    width: '100%',
-                    direction: 'ltr',
-                    textAlign: 'left',
-                    unicodeBidi: 'embed',
-                    lineHeight: 1.6,
-                    fontSize: '14px',
-                    fontFamily: theme.typography.fontFamily,
-                    '&:focus': {
-                      outline: `2px solid ${theme.palette.primary.main}`,
-                      outlineOffset: '2px'
-                    },
-                    '&:empty:before': {
-                      content: '"Start writing your article content here..."',
-                      color: theme.palette.text.disabled,
-                      fontStyle: 'italic'
-                    }
-                  }}
-                />
-              </Box>
-              <Typography variant="caption" color="textSecondary" sx={{ 
-                textAlign: 'center', 
-                display: 'block',
-                mt: 1
-              }}>
-                Full-featured editor with font controls: Select text to change font family, size, color, and apply formatting.
-              </Typography>
-            </Box>
-
-            {/* Submit Button */}
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              mt: 4 
-            }}>
-              <Button
-                type="submit"
-                variant="contained"
-                size="large"
-                sx={{
-                  px: 4,
-                  py: 1.5,
-                  fontSize: '1.1rem',
-                  fontWeight: 600,
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  boxShadow: theme.shadows[3],
-                  '&:hover': {
-                    boxShadow: theme.shadows[6],
-                  }
-                }}
+        {ui.sidebarTab === 1 && (
+          <Stack spacing={3}>
+            <FormControl fullWidth>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={formData.status}
+                onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
               >
-                Submit Article
+                <MenuItem value="draft">Draft</MenuItem>
+                <MenuItem value="review">Under Review</MenuItem>
+                <MenuItem value="scheduled">Scheduled</MenuItem>
+                <MenuItem value="published">Published</MenuItem>
+              </Select>
+            </FormControl>
+
+            <TextField
+              fullWidth
+              label="Publish Date"
+              type="datetime-local"
+              value={formData.publishAt || ''}
+              onChange={(e) => setFormData(prev => ({ ...prev, publishAt: e.target.value }))}
+              InputLabelProps={{ shrink: true }}
+            />
+
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>Visibility</Typography>
+              <FormControlLabel
+                control={<Switch defaultChecked />}
+                label="Public"
+              />
+              <FormControlLabel
+                control={<Switch />}
+                label="Allow Comments"
+              />
+              <FormControlLabel
+                control={<Switch />}
+                label="Allow Sharing"
+              />
+            </Box>
+          </Stack>
+        )}
+
+        {ui.sidebarTab === 2 && (
+          <Stack spacing={3}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>Content Statistics</Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <Box textAlign="center">
+                      <Typography variant="h4" color="primary">{stats.wordCount}</Typography>
+                      <Typography variant="caption">Words</Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Box textAlign="center">
+                      <Typography variant="h4" color="primary">{stats.readingTime}</Typography>
+                      <Typography variant="caption">Min Read</Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Box textAlign="center">
+                      <Typography variant="h4" color="primary">{stats.charCount}</Typography>
+                      <Typography variant="caption">Characters</Typography>
+                    </Box>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Box textAlign="center">
+                      <Typography variant="h4" color="primary">{stats.paragraphCount}</Typography>
+                      <Typography variant="caption">Paragraphs</Typography>
+                    </Box>
+                  </Grid>
+                </Grid>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>Readability Score</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <Box sx={{ width: '100%', mr: 1 }}>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={stats.readabilityScore} 
+                      sx={{ height: 10, borderRadius: 5 }}
+                    />
+                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    {stats.readabilityScore}/100
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  {stats.readabilityScore > 80 ? 'Very Easy' : 
+                   stats.readabilityScore > 60 ? 'Easy' : 
+                   stats.readabilityScore > 40 ? 'Moderate' : 
+                   stats.readabilityScore > 20 ? 'Difficult' : 'Very Difficult'}
+                </Typography>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>AI Suggestions</Typography>
+                <Button fullWidth startIcon={<AutoAwesome />} sx={{ mb: 1 }}>
+                  Improve Readability
+                </Button>
+                <Button fullWidth startIcon={<TrendingUp />} sx={{ mb: 1 }}>
+                  SEO Optimization
+                </Button>
+                <Button fullWidth startIcon={<Psychology />}>
+                  Enhance Engagement
+                </Button>
+              </CardContent>
+            </Card>
+          </Stack>
+        )}
+      </Box>
+    </Box>
+  );
+
+  return (
+    <Box sx={{ 
+      height: '100vh', 
+      display: 'flex', 
+      flexDirection: 'column',
+      mt: 20,
+      bgcolor: editorState.isDistraction ? 'background.paper' : 'background.default'
+    }}>
+      {/* Top Toolbar */}
+      {!editorState.isDistraction && (
+        <Paper elevation={1} sx={{ p: 1, borderBottom: 1, borderColor: 'divider' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="h6" sx={{ mr: 2 }}>
+                {formData.title || 'Untitled Article'}
+              </Typography>
+              {editorState.showWordCount && (
+                <Chip label={`${stats.wordCount} words`} size="small" />
+              )}
+              {editorState.showReadingTime && (
+                <Chip label={`${stats.readingTime} min read`} size="small" />
+              )}
+            </Box>
+            
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Button startIcon={<SaveIcon />} size="small">
+                Save
+              </Button>
+              <Button startIcon={<PreviewIcon />} size="small">
+                Preview
+              </Button>
+              <Button 
+                variant="contained" 
+                startIcon={<PublishIcon />}
+                onClick={handlePublish}
+              >
+                Publish
+              </Button>
+              <IconButton onClick={() => setUi(prev => ({ ...prev, sidebarOpen: true }))}>
+                <SettingsIcon />
+              </IconButton>
+            </Box>
+          </Box>
+        </Paper>
+      )}
+
+      {/* Format Toolbar */}
+      {!editorState.isDistraction && (
+        <Paper elevation={0} sx={{ p: 1, borderBottom: 1, borderColor: 'divider' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+            {/* Undo/Redo */}
+            <IconButton size="small" onClick={() => document.execCommand('undo')}>
+              <Undo />
+            </IconButton>
+            <IconButton size="small" onClick={() => document.execCommand('redo')}>
+              <Redo />
+            </IconButton>
+            
+            <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+            
+            {/* Format Actions */}
+            {formatActions.map(({ icon: Icon, label, action }) => (
+              <Tooltip key={label} title={label}>
+                <IconButton size="small" onClick={action}>
+                  <Icon />
+                </IconButton>
+              </Tooltip>
+            ))}
+            
+            <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+            
+            {/* Alignment */}
+            {alignActions.map(({ icon: Icon, label, action }) => (
+              <Tooltip key={label} title={label}>
+                <IconButton size="small" onClick={action}>
+                  <Icon />
+                </IconButton>
+              </Tooltip>
+            ))}
+            
+            <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+            
+            {/* Insert Tools */}
+            <Tooltip title="Insert Link">
+              <IconButton size="small" onClick={() => setUi(prev => ({ ...prev, linkDialogOpen: true }))}>
+                <LinkIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Insert Image">
+              <IconButton size="small" onClick={() => setUi(prev => ({ ...prev, imageDialogOpen: true }))}>
+                <ImageIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Insert Table">
+              <IconButton size="small" onClick={() => setUi(prev => ({ ...prev, tableDialogOpen: true }))}>
+                <TableChart />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Insert Video">
+              <IconButton size="small">
+                <VideoLibrary />
+              </IconButton>
+            </Tooltip>
+            
+            <Box sx={{ flexGrow: 1 }} />
+            
+            {/* View Options */}
+            <Tooltip title="Distraction Free">
+              <IconButton size="small" onClick={toggleDistraction}>
+                <MenuBook />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={editorState.isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}>
+              <IconButton size="small" onClick={toggleFullscreen}>
+                {editorState.isFullscreen ? <FullscreenExit /> : <Fullscreen />}
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Paper>
+      )}
+
+      {/* Status Bar */}
+      {status.message && (
+        <Alert 
+          severity={status.type} 
+          sx={{ borderRadius: 0 }}
+          action={
+            status.progress > 0 && (
+              <LinearProgress 
+                variant="determinate" 
+                value={status.progress} 
+                sx={{ width: 100 }}
+              />
+            )
+          }
+        >
+          {status.message}
+        </Alert>
+      )}
+
+      {/* Main Content Area */}
+      <Box sx={{ 
+        flex: 1, 
+        display: 'flex',
+        overflow: 'hidden'
+      }}>
+        <Container 
+          maxWidth={false}
+          sx={{ 
+            flex: 1,
+            py: 3,
+            px: editorState.isDistraction ? 8 : 3,
+            overflow: 'auto',
+            maxWidth: editorState.maxWidth,
+            mx: 'auto'
+          }}
+        >
+          {/* Article Meta Fields */}
+          <Stack spacing={3} sx={{ mb: 4 }}>
+            <TextField
+              fullWidth
+              label="Article Title"
+              value={formData.title}
+              onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+              variant="outlined"
+              size="large"
+              placeholder="Enter your article title..."
+              sx={{ 
+                '& .MuiInputBase-input': { 
+                  fontSize: '1.5rem',
+                  fontWeight: 'bold'
+                }
+              }}
+            />
+            
+            <TextField
+              fullWidth
+              label="Subtitle (Optional)"
+              value={formData.subtitle}
+              onChange={(e) => setFormData(prev => ({ ...prev, subtitle: e.target.value }))}
+              variant="outlined"
+              placeholder="Add a subtitle to provide more context..."
+            />
+
+            <TextField
+              fullWidth
+              label="Article Summary"
+              value={formData.summary}
+              onChange={(e) => setFormData(prev => ({ ...prev, summary: e.target.value }))}
+              multiline
+              rows={3}
+              helperText="A brief description for previews and social sharing (recommended 150-160 characters)"
+              placeholder="Write a compelling summary of your article..."
+            />
+
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <FormControl sx={{ minWidth: 200 }}>
+                <InputLabel>Category</InputLabel>
+                <Select
+                  value={formData.category}
+                  onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
+                  label="Category"
+                >
+                  {categories.map(cat => (
+                    <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="subtitle2" gutterBottom>Tags</Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+                  {formData.tags.map((tag, index) => (
+                    <Chip 
+                      key={index} 
+                      label={tag} 
+                      onDelete={() => handleRemoveTag(tag)}
+                      size="small"
+                      color="primary"
+                      variant="outlined"
+                    />
+                  ))}
+                </Box>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <TextField
+                    size="small"
+                    placeholder="Add tags..."
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleAddTag();
+                      }
+                    }}
+                    sx={{ flex: 1 }}
+                  />
+                  <Button 
+                    size="small" 
+                    onClick={handleAddTag}
+                    disabled={!newTag.trim()}
+                  >
+                    Add
+                  </Button>
+                </Box>
+              </Box>
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>Featured Image</Typography>
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                onChange={handleImageUpload}
+                style={{ display: 'none' }}
+              />
+              {!imagePreview ? (
+                <Button
+                  variant="outlined"
+                  startIcon={<CloudUpload />}
+                  onClick={() => fileInputRef.current?.click()}
+                  sx={{ height: 120, width: '100%', borderStyle: 'dashed' }}
+                >
+                  Upload Featured Image
+                </Button>
+              ) : (
+                <Box sx={{ position: 'relative', display: 'inline-block' }}>
+                  <img 
+                    src={imagePreview} 
+                    alt="Featured" 
+                    style={{ width: '100%', maxHeight: 300, objectFit: 'cover', borderRadius: 8 }}
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={() => { setImagePreview(null); setFeaturedImage(null); }}
+                    sx={{ position: 'absolute', top: 8, right: 8, bgcolor: 'rgba(0,0,0,0.5)', color: 'white' }}
+                  >
+                    <Delete />
+                  </IconButton>
+                </Box>
+              )}
+            </Box>
+          </Stack>
+
+          {/* Article Content Editor */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Article Content
+            </Typography>
+            <Box
+              ref={editorRef}
+              contentEditable
+              suppressContentEditableWarning
+              onInput={(e) => handleContentChange(e.target.innerHTML)}
+              sx={{
+                minHeight: 500,
+                fontSize: editorState.fontSize,
+                lineHeight: editorState.lineHeight,
+                outline: 'none',
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 1,
+                p: 3,
+                bgcolor: 'background.paper',
+                '&:focus': {
+                  outline: 'none',
+                  borderColor: 'primary.main'
+                },
+                '&:empty:before': {
+                  content: '"Start writing your article here..."',
+                  color: 'text.disabled',
+                  fontStyle: 'italic'
+                },
+                '& p': {
+                  margin: '1em 0',
+                  '&:first-of-type': {
+                    marginTop: 0
+                  }
+                },
+                '& h1, & h2, & h3': {
+                  fontWeight: 'bold',
+                  margin: '1.5em 0 0.5em 0'
+                },
+                '& h1': { fontSize: '2em' },
+                '& h2': { fontSize: '1.5em' },
+                '& h3': { fontSize: '1.25em' },
+                '& blockquote': {
+                  borderLeft: '4px solid',
+                  borderColor: 'primary.main',
+                  pl: 2,
+                  fontStyle: 'italic',
+                  margin: '1em 0'
+                },
+                '& ul, & ol': {
+                  margin: '1em 0',
+                  pl: 2
+                },
+                '& pre': {
+                  bgcolor: 'grey.100',
+                  p: 2,
+                  borderRadius: 1,
+                  overflow: 'auto',
+                  fontFamily: 'monospace'
+                }
+              }}
+            />
+          </Box>
+
+          {/* Content Statistics */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <Chip 
+                icon={<AccessTime />}
+                label={`${stats.readingTime} min read`} 
+                size="small" 
+                variant="outlined"
+              />
+              <Chip 
+                label={`${stats.wordCount} words`} 
+                size="small" 
+                variant="outlined"
+              />
+              <Chip 
+                label={`${stats.charCount} characters`} 
+                size="small" 
+                variant="outlined"
+              />
+            </Box>
+            <Button 
+              variant="contained" 
+              size="large"
+              startIcon={<PublishIcon />}
+              onClick={handlePublish}
+              disabled={!formData.title || !formData.content}
+            >
+              Publish Article
+            </Button>
+          </Box>
+        </Container>
+      </Box>
+
+      {/* Settings Sidebar */}
+      <Drawer
+        anchor="right"
+        open={ui.sidebarOpen}
+        onClose={() => setUi(prev => ({ ...prev, sidebarOpen: false }))}
+      >
+        <SidebarContent />
+      </Drawer>
+
+      {/* Insert Link Dialog */}
+      <Dialog open={ui.linkDialogOpen} onClose={() => setUi(prev => ({ ...prev, linkDialogOpen: false }))}>
+        <DialogTitle>Insert Link</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              autoFocus
+              fullWidth
+              label="URL"
+              placeholder="https://example.com"
+            />
+            <TextField
+              fullWidth
+              label="Text to display"
+              placeholder="Link text"
+            />
+            <FormControlLabel
+              control={<Switch />}
+              label="Open in new tab"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUi(prev => ({ ...prev, linkDialogOpen: false }))}>Cancel</Button>
+          <Button variant="contained">Insert</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Insert Image Dialog */}
+      <Dialog 
+        open={ui.imageDialogOpen} 
+        onClose={() => setUi(prev => ({ ...prev, imageDialogOpen: false }))}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Insert Image</DialogTitle>
+        <DialogContent>
+          <Tabs value={0} sx={{ mb: 2 }}>
+            <Tab label="Upload" />
+            <Tab label="Gallery" />
+            <Tab label="URL" />
+          </Tabs>
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={{ 
+              border: '1px dashed', 
+              borderColor: 'divider', 
+              borderRadius: 1, 
+              p: 4,
+              textAlign: 'center'
+            }}>
+              <CloudUpload fontSize="large" color="action" />
+              <Typography variant="body1" sx={{ mt: 1 }}>
+                Drag and drop image here or click to browse
+              </Typography>
+              <Button 
+                variant="outlined" 
+                sx={{ mt: 2 }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Select Image
               </Button>
             </Box>
-          </form>
-        </Paper>
 
-        {/* Link Dialog */}
-        <Dialog open={linkDialogOpen} onClose={() => setLinkDialogOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Insert Link</DialogTitle>
-          <DialogContent>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              fullWidth
+              label="Alternative Text"
+              helperText="Description for accessibility and SEO"
+            />
+
+            <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
-                label="Link Text"
-                value={linkText}
-                onChange={(e) => setLinkText(e.target.value)}
                 fullWidth
-                helperText="The text that will be displayed (leave empty to use selected text)"
+                label="Width"
+                type="number"
+                defaultValue="100"
+                InputProps={{
+                  endAdornment: <InputAdornment position="end">%</InputAdornment>
+                }}
               />
               <TextField
-                label="URL"
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
                 fullWidth
-                placeholder="https://example.com"
-                required
+                label="Alignment"
+                select
+                defaultValue="center"
+              >
+                <MenuItem value="left">Left</MenuItem>
+                <MenuItem value="center">Center</MenuItem>
+                <MenuItem value="right">Right</MenuItem>
+              </TextField>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUi(prev => ({ ...prev, imageDialogOpen: false }))}>Cancel</Button>
+          <Button variant="contained">Insert</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Insert Table Dialog */}
+      <Dialog open={ui.tableDialogOpen} onClose={() => setUi(prev => ({ ...prev, tableDialogOpen: false }))}>
+        <DialogTitle>Insert Table</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                label="Rows"
+                type="number"
+                defaultValue="3"
+              />
+              <TextField
+                label="Columns"
+                type="number"
+                defaultValue="3"
               />
             </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setLinkDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleLinkCreate} variant="contained" disabled={!linkUrl}>
-              Insert Link
-            </Button>
-          </DialogActions>
-        </Dialog>
 
-        {/* Font Family Menu */}
-        <Menu
-          anchorEl={fontFamilyMenuAnchor}
-          open={Boolean(fontFamilyMenuAnchor)}
-          onClose={() => setFontFamilyMenuAnchor(null)}
-          PaperProps={{
-            sx: { maxHeight: 300, width: 250 }
-          }}
-        >
-          {fontFamilies.map((font) => (
-            <MenuItem
-              key={font.label}
-              onClick={() => handleFontFamilyChange(font.value)}
-              sx={{
-                fontFamily: font.value,
-                backgroundColor: currentFontFamily === font.label ? theme.palette.action.selected : 'transparent'
-              }}
-            >
-              {font.label}
-            </MenuItem>
-          ))}
-        </Menu>
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>Table Style</Typography>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button variant="outlined">Basic</Button>
+                <Button variant="outlined">Bordered</Button>
+                <Button variant="outlined">Striped</Button>
+              </Box>
+            </Box>
 
-        {/* Font Size Menu */}
-        <Menu
-          anchorEl={fontSizeMenuAnchor}
-          open={Boolean(fontSizeMenuAnchor)}
-          onClose={() => setFontSizeMenuAnchor(null)}
-          PaperProps={{
-            sx: { maxHeight: 300, width: 120 }
-          }}
-        >
-          {fontSizes.map((size) => (
-            <MenuItem
-              key={size.label}
-              onClick={() => handleFontSizeChange(size.value)}
-              sx={{
-                fontSize: size.value,
-                backgroundColor: currentFontSize === size.value ? theme.palette.action.selected : 'transparent'
-              }}
-            >
-              {size.label}
-            </MenuItem>
-          ))}
-        </Menu>
-
-        {/* Color Menu */}
-        <Menu
-          anchorEl={colorMenuAnchor}
-          open={Boolean(colorMenuAnchor)}
-          onClose={() => setColorMenuAnchor(null)}
-          PaperProps={{
-            sx: { maxWidth: 300, p: 1 }
-          }}
-        >
-          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1 }}>
-            {textColors.map((color) => (
-              <MenuItem
-                key={color.name}
-                onClick={() => handleColorSelect(color.value)}
-                sx={{
-                  minWidth: 'auto',
-                  width: 32,
-                  height: 32,
-                  backgroundColor: color.value === 'inherit' ? 'transparent' : color.value,
-                  border: color.value === 'inherit' ? `2px solid ${theme.palette.text.primary}` : '2px solid transparent',
-                  borderRadius: 1,
-                  '&:hover': {
-                    borderColor: theme.palette.primary.main,
-                  }
-                }}
-                title={color.name}
-              />
-            ))}
+            <FormControlLabel
+              control={<Switch defaultChecked />}
+              label="Include header row"
+            />
           </Box>
-        </Menu>
-      </Container>
-    </>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUi(prev => ({ ...prev, tableDialogOpen: false }))}>Cancel</Button>
+          <Button variant="contained">Insert</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* AI Assist Panel */}
+      <Drawer
+        anchor="bottom"
+        open={ui.aiAssistOpen}
+        onClose={() => setUi(prev => ({ ...prev, aiAssistOpen: false }))}
+        PaperProps={{
+          sx: { height: '40vh' }
+        }}
+      >
+        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <Typography variant="h6" gutterBottom>AI Writing Assistant</Typography>
+          
+          <Tabs value={0} sx={{ mb: 2 }}>
+            <Tab label="Improve" />
+            <Tab label="Summarize" />
+            <Tab label="Expand" />
+            <Tab label="Rephrase" />
+          </Tabs>
+
+          <Box sx={{ flex: 1, overflow: 'auto', mb: 2 }}>
+            <Typography variant="body1">
+              Select text to get AI suggestions or ask for general improvements to your content.
+            </Typography>
+          </Box>
+
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField
+              fullWidth
+              placeholder="Ask AI to help with your writing..."
+            />
+            <Button variant="contained">Ask</Button>
+          </Box>
+        </Box>
+      </Drawer>
+
+      {/* Floating Action Buttons */}
+      {!ui.sidebarOpen && (
+        <Box sx={{ position: 'fixed', right: 16, bottom: 16, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Tooltip title="AI Assist">
+            <Fab 
+              color="primary" 
+              onClick={() => setUi(prev => ({ ...prev, aiAssistOpen: true }))}
+            >
+              <AutoAwesome />
+            </Fab>
+          </Tooltip>
+          
+          <Tooltip title="Save Draft">
+            <Fab color="secondary">
+              <SaveIcon />
+            </Fab>
+          </Tooltip>
+        </Box>
+      )}
+    </Box>
   );
 };
 

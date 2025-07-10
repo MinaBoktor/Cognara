@@ -18,7 +18,7 @@ const Layout = ({ children, showHero = false, showHeader = true, showNewsletter 
       
       
       {/* Hero Section */}
-      {showHero && <HeroSection />}
+      {showHero && <HeroSection isDarkMode={isDarkMode} />}
 
       {/* Main content container */}
       <Container 

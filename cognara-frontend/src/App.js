@@ -41,6 +41,7 @@ function App() {
   const theme = createTheme({
     palette: {
       mode: isDarkMode ? 'dark' : 'light',
+      // --- UNCHANGED ORIGINAL PALETTE ---
       primary: {
         main: isDarkMode ? '#90caf9' : '#1976d2'
       },
@@ -54,6 +55,21 @@ function App() {
       text: {
         primary: isDarkMode ? '#ffffff' : '#000000',
         secondary: isDarkMode ? '#bbbbbb' : '#555555'
+      },
+      // --- NEW CUSTOM COLORS FOR HEADER ---
+      custom: {
+        header: {
+          background: isDarkMode ? 'rgba(18, 18, 18, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+          text: isDarkMode ? '#EAEAEA' : '#2C3E50',
+          logoGradient: isDarkMode 
+            ? 'linear-gradient(45deg, #FFA726, #F06292)' // Warm Orange to Pink for Dark Mode
+            : 'linear-gradient(45deg, #00796B, #42A5F5)', // Teal to Blue for Light Mode
+          button: {
+            background: isDarkMode ? '#FFA726' : '#00796B',
+            text: '#FFFFFF',
+            hoverBackground: isDarkMode ? '#F57C00' : '#00695C'
+          }
+        }
       }
     },
     typography: {
@@ -112,11 +128,11 @@ function App() {
               <Route path="/signup" element={<GuestOnlyRoute> <Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><SignUpPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout> </GuestOnlyRoute>} />
               <Route path="/forgot-password" element={<GuestOnlyRoute> <ForgetPassword isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </GuestOnlyRoute>} />
               <Route path="/confirm-email" element={<GuestOnlyRoute> <ConfirmEmail isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </GuestOnlyRoute>} />
-              <Route path="/article/:id" element={<Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><ArticlePage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout>} />
-              <Route path="/submit" element={<ProtectedRoute> <Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><SubmitArticlePage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout> </ProtectedRoute>} />
+              <Route path="/article/:id" element={<Layout showNewsletter={false} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><ArticlePage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout>} />
+              <Route path="/submit" element={<ProtectedRoute> <Layout showNewsletter={false} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><SubmitArticlePage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout> </ProtectedRoute>} />
               <Route path="/admin" element={<ProtectedRoute adminOnly> <AdminDashboard isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </ProtectedRoute>} />
-              <Route path="/about" element={<Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}> <AboutPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </Layout>} />
-              <Route path="/contact" element={<Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}> <ContactPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </Layout>} />
+              <Route path="/about" element={<Layout showNewsletter={false} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}> <AboutPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </Layout>} />
+              <Route path="/contact" element={<Layout showNewsletter={false} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}> <ContactPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </Layout>} />
               <Route path="/newsletter" element={<GuestOnlyRoute><Layout showNewsletter={false} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><Newsletterpage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout></GuestOnlyRoute>} />
               <Route path="/dashboard" element={<ProtectedRoute><Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}> <Dashboard isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout> </ProtectedRoute>} />
               <Route path="*" element={<Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><NotFoundPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout>} />

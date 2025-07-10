@@ -101,7 +101,6 @@ def get_comments(request, article_id):
 
 
 @api_view(['POST'])
-#@require_frontend_token
 @require_session_login
 def post_comments(request):
     try:
