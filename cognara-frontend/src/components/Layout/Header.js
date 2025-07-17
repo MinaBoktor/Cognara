@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  AppBar, 
-  Toolbar, 
-  Typography, 
-  Button, 
-  Box, 
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Box,
   Container,
   IconButton,
   Menu,
@@ -21,12 +21,12 @@ import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
 import HelpIcon from '@mui/icons-material/Help';
 import LogoutIcon from '@mui/icons-material/Logout';
+// CORRECTED IMPORT STATEMENT:
 import { Brightness4 as DarkModeIcon, Brightness7 as LightModeIcon } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { authAPI } from '../../services/api';
 
-const Header = ({ isDarkMode, setIsDarkMode }) => {
+const Header = ({ isDarkMode, setIsDarkMode, editorMode = false }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [anchorEl, setAnchorEl] = useState(null);
@@ -38,8 +38,13 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
   const profileOpen = Boolean(profileAnchorEl);
 
   useEffect(() => {
-    // Force scrollbar to always appear to prevent layout shift
     document.documentElement.style.overflowY = 'scroll';
+
+    // In editorMode, we don't need the scroll-based style changes.
+    if (editorMode) {
+        setScrolled(true); // Set scrolled to true to get the solid background
+        return;
+    }
     
     const handleScroll = () => {
       const isScrolled = window.scrollY > 10;
@@ -53,7 +58,8 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
       window.removeEventListener('scroll', handleScroll);
       document.documentElement.style.overflowY = 'auto';
     };
-  }, [scrolled]);
+  }, [scrolled, editorMode]);
+
 
   const handleMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
@@ -88,36 +94,35 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
     }
   };
 
-  useEffect(() => {
-    console.log('User state changed:', user);
-  }, [user]);
-
   return (
-    <AppBar 
+    <AppBar
       position="fixed"
       color="transparent"
       elevation={scrolled ? 4 : 0}
       sx={{
-        py: 2,
+        // Remove vertical padding in editor mode for a standard 64px height
+        ...(!editorMode && { py: 2 }),
         backgroundColor: scrolled ? 'background.paper' : 'transparent',
         backdropFilter: scrolled ? 'blur(10px)' : 'none',
         transition: 'all 0.3s ease',
-        zIndex: 3,
-        animation: 'dropIn 0.5s ease-out forwards',
-        opacity: 0,
-        transform: 'translateY(-100px)',
-        '@keyframes dropIn': {
-          to: {
-            opacity: 1,
-            transform: 'translateY(0)'
-          }
-        }
+        // Ensure header is above the editor toolbar
+        zIndex: (theme) => theme.zIndex.drawer + 1,
+        // Keep animation only for non-editor pages
+        ...(!editorMode && {
+            animation: 'dropIn 0.5s ease-out forwards',
+            opacity: 0,
+            transform: 'translateY(-100px)',
+            '@keyframes dropIn': {
+                to: {
+                    opacity: 1,
+                    transform: 'translateY(0)'
+                }
+            }
+        })
       }}
     >
       <Container maxWidth="lg" sx={{ paddingRight: '0 !important' }}>
-        <Toolbar disableGutters sx={{ 
-          justifyContent: 'space-between',
-        }}>
+        <Toolbar disableGutters>
           {/* Mobile menu button */}
           {isMobile && (
             <Box sx={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
@@ -151,16 +156,11 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
                 }}
               >
                 {navItems.map((item) => (
-                  <MenuItem 
-                    key={item} 
+                  <MenuItem
+                    key={item}
                     onClick={handleMenuClose}
                     component={Link}
                     to={item === 'Home' ? '/' : `/${item.toLowerCase().replace(' ', '-')}`}
-                    sx={{
-                      '&:hover': {
-                        backgroundColor: 'rgba(255, 255, 255, 0.05)'
-                      }
-                    }}
                   >
                     {item}
                   </MenuItem>
@@ -174,11 +174,6 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
                         onClick={handleMenuClose}
                         component={Link}
                         to={path}
-                        sx={{
-                          '&:hover': {
-                            backgroundColor: 'rgba(255, 255, 255, 0.05)'
-                          }
-                        }}
                       >
                         {item}
                       </MenuItem>
@@ -190,38 +185,19 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
                       onClick={handleMenuClose}
                       component={Link}
                       to="/settings"
-                      sx={{
-                        '&:hover': {
-                          backgroundColor: 'rgba(255, 255, 255, 0.05)'
-                        }
-                      }}
                     >
                       Settings
                     </MenuItem>
-                    <MenuItem 
-                      onClick={handleLogout}
-                      sx={{ 
-                        color: theme.palette.error.main,
-                        '&:hover': {
-                          backgroundColor: 'rgba(255, 255, 255, 0.05)'
-                        }
-                      }}
-                    >
+                    <MenuItem onClick={handleLogout} sx={{ color: theme.palette.error.main }}>
                       Logout
                     </MenuItem>
                   </>
                 )}
-                {/* Theme toggle in mobile menu */}
                 <Divider />
                 <MenuItem 
                   onClick={() => {
                     handleThemeToggle();
                     handleMenuClose();
-                  }}
-                  sx={{
-                    '&:hover': {
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)'
-                    }
                   }}
                 >
                   <ListItemIcon>
@@ -235,16 +211,11 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
 
           {/* Left-aligned navigation (desktop) */}
           {!isMobile && (
-            <Box sx={{ 
-              display: 'flex', 
-              gap: 2,
-              flex: 1,
-              justifyContent: 'flex-start'
-            }}>
+            <Box sx={{ display: 'flex', gap: 2, flex: 1, justifyContent: 'flex-start' }}>
               {navItems.map((label) => (
-                <Button 
+                <Button
                   key={label}
-                  component={Link} 
+                  component={Link}
                   to={label === 'Home' ? '/' : `/${label.toLowerCase().replace(' ', '-')}`}
                   sx={{
                     color: 'text.primary',
@@ -264,19 +235,19 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
           )}
 
           {/* Centered logo */}
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'center',
-            flex: isMobile ? 0 : 1,
-            position: isMobile ? 'absolute' : 'static',
-            left: isMobile ? '50%' : 'auto',
-            transform: isMobile ? 'translateX(-50%)' : 'none'
+          <Box sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              flex: isMobile ? 0 : 1,
+              position: isMobile ? 'absolute' : 'static',
+              left: isMobile ? '50%' : 'auto',
+              transform: isMobile ? 'translateX(-50%)' : 'none'
           }}>
-            <Typography 
-              variant="h4" 
-              component={Link} 
-              to="/" 
-              sx={{ 
+            <Typography
+              variant="h4"
+              component={Link}
+              to="/"
+              sx={{
                 fontWeight: 900,
                 mb: 1,
                 background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
@@ -290,14 +261,7 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
           </Box>
 
           {/* Right-aligned actions */}
-          <Box sx={{ 
-            display: 'flex', 
-            gap: 2,
-            flex: 1,
-            justifyContent: 'flex-end',
-            alignItems: 'center'
-          }}>
-            {/* Theme toggle button for desktop */}
+          <Box sx={{ display: 'flex', gap: 2, flex: 1, justifyContent: 'flex-end', alignItems: 'center' }}>
             {!isMobile && (
               <Tooltip title={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}>
                 <IconButton
@@ -476,7 +440,6 @@ const Header = ({ isDarkMode, setIsDarkMode }) => {
                 Help
               </MenuItem>
               <Divider sx={{ my: 0.5 }} />
-              {/* Theme toggle in profile menu for logged-in users */}
               <MenuItem onClick={() => {
                 handleThemeToggle();
                 handleProfileMenuClose();

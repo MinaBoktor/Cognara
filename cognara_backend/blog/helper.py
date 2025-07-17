@@ -8,6 +8,8 @@ import random
 import os
 from supabase import create_client
 from functools import wraps
+from rest_framework.response import Response
+
 
 
 SUPABASE_URL = settings.SUPABASE_URL
@@ -90,14 +92,16 @@ def require_frontend_token(view_func):
     return wrapped_view
 
 def require_session_login(view_func):
+    """
+    Decorator to check if user is logged in via session
+    """
     @wraps(view_func)
-    def _wrapped_view(request, *args, **kwargs):
-        print("SESSION DATA:", request.session.items())
+    def wrapper(request, *args, **kwargs):
         if 'id' not in request.session:
-            print('Session missing user id')
-            return JsonResponse({'error': 'Authentication required'}, status=401)
+            return Response({'error': 'User not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
         return view_func(request, *args, **kwargs)
-    return _wrapped_view
+    return wrapper
+
 
 
 def get_user(id):

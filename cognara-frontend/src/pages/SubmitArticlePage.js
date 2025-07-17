@@ -1,1036 +1,482 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { 
-  Box, 
-  Button, 
-  Container, 
-  Paper, 
-  TextField, 
-  Typography, 
-  Alert, 
-  IconButton, 
-  Tooltip, 
-  useTheme, 
-  Drawer, 
-  Divider, 
-  Chip,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Switch,
-  FormControlLabel,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Badge,
-  Fab,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Slider,
-  Card,
-  CardContent,
-  Menu,
-  ListItemIcon,
-  ListItemText,
-  Stack,
-  Tab,
-  Tabs,
-  Grid,
-  LinearProgress,
-  InputAdornment  // Added missing import
+import TiptapEditor from '../components/Editor/TiptapEditor';
+import { useEditor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Bold from '@tiptap/extension-bold';
+import {
+  Box, Button, TextField, Typography, Alert, IconButton, Tooltip, Divider, Chip, FormControl, InputLabel, Select,
+  MenuItem, Stack, Snackbar, Avatar, Grid, LinearProgress, Switch, FormControlLabel, Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import {
-  FormatBold,
-  FormatItalic,
-  FormatUnderlined,
-  FormatStrikethrough,
-  FormatQuote,
-  FormatListBulleted,
-  FormatListNumbered,
-  FormatAlignLeft,
-  FormatAlignCenter,
-  FormatAlignRight,
-  FormatAlignJustify,
-  Link as LinkIcon,
-  Image as ImageIcon,
-  Settings as SettingsIcon,
-  Publish as PublishIcon,
-  Save as SaveIcon,
-  Preview as PreviewIcon,
-  Fullscreen,
-  FullscreenExit,
-  Palette,
-  Code,
-  TableChart,
-  VideoLibrary,
-  Schedule,
-  Visibility,
-  ExpandMore,
-  Add,
-  Delete,
-  CloudUpload,
-  Undo,
-  Redo,
-  FindReplace,
-  Spellcheck,
-  AutoFixHigh,
-  Analytics,
-  Share,
-  BookmarkBorder,
-  Category,
-  Label,
-  Psychology,
-  Timer,
-  MenuBook,
-  Assessment,
-  TrendingUp,
-  AutoAwesome,
-  ContentCopy,
-  VolumeUp,
-  Translate,
-  ChatBubbleOutline,
-  AccessTime
+  FormatBold, FormatItalic, FormatUnderlined, FormatListBulleted, FormatListNumbered, Link as LinkIcon,
+  FormatAlignLeft, FormatAlignCenter, FormatAlignRight, FormatAlignJustify,
+  Publish as PublishIcon, Save as SaveIcon, Preview as PreviewIcon,
+  Fullscreen, FullscreenExit, Settings as SettingsIcon, AutoAwesome,
+  CheckCircle, Warning, Error, Info, Close, SmartToy, Undo, Redo, Category
 } from '@mui/icons-material';
 
+const categoriesList = [
+  'Technology', 'Business', 'Science', 'Health', 'Entertainment', 'Sports', 'Lifestyle', 'Travel', 'Food', 'Fashion', 'Education',
+  'Finance', 'Politics', 'Environment', 'Culture', 'Arts'
+];
+
 const SubmitArticlePage = () => {
-  const theme = useTheme();
+  const HEADER_HEIGHT = 64;
   const [formData, setFormData] = useState({
-    title: '',
-    subtitle: '',
-    summary: '',
-    content: '',
-    tags: [],
-    category: '',
-    metaDescription: '',
-    slug: '',
-    readingTime: 0,
-    publishAt: null,
-    status: 'draft'
+    title: '', subtitle: '', content: '', category: '',
+    author: 'Current User'
   });
-  
   const [editorState, setEditorState] = useState({
-    isFullscreen: false,
-    isDistraction: false,
-    fontSize: 16,
-    lineHeight: 1.6,
-    maxWidth: 800,
-    showWordCount: true,
-    showReadingTime: true,
-    enableSpellcheck: true,
-    enableGrammarCheck: true,
-    enableAutoSave: true,
-    saveInterval: 30000
+    isFullscreen: false, fontSize: 18, lineHeight: 1.7, fontFamily: 'Inter', enableAutoSave: true, saveInterval: 30000
   });
-
-  const [ui, setUi] = useState({
-    sidebarOpen: false,
-    sidebarTab: 0,
-    formatMenuAnchor: null,
-    insertMenuAnchor: null,
-    linkDialogOpen: false,
-    imageDialogOpen: false,
-    tableDialogOpen: false,
-    previewMode: false,
-    aiAssistOpen: false
-  });
-
+  const [ui, setUi] = useState({ settingsOpen: false, snackbarOpen: false, snackbarMessage: '', snackbarSeverity: 'info', previewMode: false });
   const [status, setStatus] = useState({ message: '', type: '', progress: 0 });
   const [stats, setStats] = useState({
-    wordCount: 0,
-    charCount: 0,
-    paragraphCount: 0,
-    readingTime: 0,
-    readabilityScore: 0
+    wordCount: 0, charCount: 0, sentenceCount: 0, paragraphCount: 0, readingTime: 0,
+    readabilityScore: 0, engagement: 0, seoScore: 0, complexWords: 0, passiveVoice: 0, transitionWords: 0, subheadings: 0, images: 0, links: 0,
+  });
+  const [aiSuggestions, setAiSuggestions] = useState([]);
+  const [newTag, setNewTag] = useState('');
+  const autoSaveRef = useRef(null);
+
+  // Tiptap editor instance for toolbar actions
+  const tiptapEditor = useEditor({
+    extensions: [StarterKit, Bold],
+    content: formData.content,
+    onUpdate: ({ editor }) => {
+      setFormData(prev => ({ ...prev, content: editor.getHTML() }));
+      analyzeContent(editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        style: `min-height:300px;outline:none;font-size:${editorState.fontSize}px;font-family:${editorState.fontFamily};line-height:${editorState.lineHeight};text-align:left;`,
+        spellCheck: 'true',
+        dir: 'ltr',
+      },
+    },
   });
 
-  const [featuredImage, setFeaturedImage] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [gallery, setGallery] = useState([]);
-  const [categories] = useState(['Technology', 'Business', 'Science', 'Health', 'Entertainment', 'Sports']);
-  const [recentTags] = useState(['React', 'JavaScript', 'Web Development', 'AI', 'Machine Learning']);
-  const [newTag, setNewTag] = useState('');
-  
-  const editorRef = useRef(null);
-  const autoSaveRef = useRef(null);
-  const fileInputRef = useRef(null);
+  // Content Analysis
+  const countSyllables = (word) => {
+    return word
+      .toLowerCase()
+      .replace(/[^a-z]/g, '')
+      .replace(/e$/, '')
+      .replace(/[aeiouy]{2,}/g, 'a')
+      .match(/[aeiouy]/g)?.length || 1;
+  };
 
-  // Content analysis and statistics
   const analyzeContent = useCallback((content) => {
     const text = content.replace(/<[^>]*>/g, '');
     const words = text.trim().split(/\s+/).filter(word => word.length > 0);
     const chars = text.length;
-    const paragraphs = content.split('</p>').length - 1;
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
     const readingTime = Math.ceil(words.length / 200);
-    
-    // Simple readability score (Flesch Reading Ease approximation)
-    const avgWordsPerSentence = words.length / (text.split(/[.!?]+/).length - 1 || 1);
-    const avgSyllablesPerWord = words.reduce((acc, word) => acc + countSyllables(word), 0) / words.length;
+    const complexWords = words.filter(word => countSyllables(word) > 2).length;
+    const passiveVoiceCount = (text.match(/\b(was|were|is|are|am|be|been|being)\s+\w+ed\b/gi) || []).length;
+    const transitionWords = ['however', 'therefore', 'moreover', 'furthermore', 'nevertheless', 'consequently'];
+    const transitionCount = words.filter(word => transitionWords.includes(word.toLowerCase())).length;
+    const subheadings = (content.match(/<h[1-6][^>]*>/gi) || []).length;
+    const images = (content.match(/<img[^>]*>/gi) || []).length;
+    const links = (content.match(/<a[^>]*>/gi) || []).length;
+    const avgWordsPerSentence = words.length / (sentences.length || 1);
+    const avgSyllablesPerWord = words.reduce((acc, word) => acc + countSyllables(word), 0) / (words.length || 1);
     const readabilityScore = Math.max(0, Math.min(100, 206.835 - (1.015 * avgWordsPerSentence) - (84.6 * avgSyllablesPerWord)));
-
+    // Remove metaDescription and tags from SEO score
+    const seoScore = Math.min(100,
+      (formData.title.length >= 30 && formData.title.length <= 60 ? 20 : 5) +
+      (formData.category ? 10 : 0) +
+      (words.length >= 300 ? 10 : 0) +
+      (images > 0 ? 10 : 0) +
+      (links > 0 ? 5 : 0) +
+      (subheadings > 0 ? 10 : 0)
+    );
+    const engagementScore = Math.min(100, Math.max(0,
+      (readabilityScore * 0.3) +
+      (Math.min(100, (words.length / 500) * 30) * 0.3) +
+      (Math.min(100, (sentences.length / (paragraphs.length || 1)) * 10) * 0.2) +
+      (Math.min(100, (transitionCount / (paragraphs.length || 1)) * 20) * 0.2)
+    ));
     setStats({
-      wordCount: words.length,
-      charCount: chars,
-      paragraphCount: paragraphs,
-      readingTime,
-      readabilityScore: Math.round(readabilityScore)
+      wordCount: words.length, charCount: chars, sentenceCount: sentences.length, paragraphCount: paragraphs.length,
+      readingTime, readabilityScore: Math.round(readabilityScore), engagement: Math.round(engagementScore),
+      seoScore: Math.round(seoScore), complexWords, passiveVoice: passiveVoiceCount, transitionWords: transitionCount,
+      subheadings, images, links
     });
-  }, []);
+    generateAISuggestions({
+      readabilityScore, seoScore, subheadings, paragraphCount: paragraphs.length, images, wordCount: words.length, passiveVoiceCount, sentenceCount: sentences.length, complexWords, transitionCount
+    });
+  }, [formData.title, formData.category]);
 
-  const countSyllables = (word) => {
-    return word.toLowerCase().replace(/[^a-z]/g, '').replace(/e$/, '').replace(/[aeiouy]{2,}/g, 'a').match(/[aeiouy]/g)?.length || 1;
+  // AI Suggestions
+  const generateAISuggestions = (statsObj) => {
+    const suggestions = [];
+    if (statsObj.readabilityScore < 60) suggestions.push({ type: 'readability', title: 'Improve Readability', description: 'Shorten sentences, use simpler words.', priority: 'high' });
+    if (statsObj.seoScore < 70) suggestions.push({ type: 'seo', title: 'Optimize for SEO', description: 'Fill meta, tags, category. Make title 30-60 chars.', priority: 'medium' });
+    if (statsObj.subheadings === 0 && statsObj.paragraphCount > 3) suggestions.push({ type: 'structure', title: 'Add Subheadings', description: 'Break up content with subheadings.', priority: 'medium' });
+    if (statsObj.images === 0 && statsObj.wordCount > 500) suggestions.push({ type: 'media', title: 'Add Images', description: 'Include images for engagement.', priority: 'low' });
+    if (statsObj.passiveVoiceCount > (statsObj.sentenceCount || 0) * 0.2) suggestions.push({ type: 'voice', title: 'Use Active Voice', description: 'Reduce passive voice.', priority: 'medium' });
+    setAiSuggestions(suggestions);
   };
 
-  // Auto-save functionality
+  // Auto-save
   useEffect(() => {
     if (editorState.enableAutoSave) {
       autoSaveRef.current = setInterval(() => {
-        if (formData.title || formData.content) {
-          setStatus({ message: 'Auto-saving...', type: 'info', progress: 50 });
-          setTimeout(() => {
-            setStatus({ message: 'Saved', type: 'success', progress: 100 });
-            setTimeout(() => setStatus({ message: '', type: '', progress: 0 }), 2000);
-          }, 1000);
-        }
+        if (formData.title || formData.content) showSnackbar('Auto-saved', 'success');
       }, editorState.saveInterval);
     }
-
-    return () => {
-      if (autoSaveRef.current) {
-        clearInterval(autoSaveRef.current);
-      }
-    };
+    return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
   }, [editorState.enableAutoSave, editorState.saveInterval, formData.title, formData.content]);
 
-  // Content change handler
-  const handleContentChange = (content) => {
-    setFormData(prev => ({ ...prev, content }));
-    analyzeContent(content);
-  };
+  // Snackbar
+  const showSnackbar = (message, severity = 'info') => setUi(prev => ({ ...prev, snackbarOpen: true, snackbarMessage: message, snackbarSeverity: severity }));
 
-  // Format toolbar actions
+  // Toolbar actions using Tiptap
   const formatActions = [
-    { icon: FormatBold, label: 'Bold', action: () => document.execCommand('bold') },
-    { icon: FormatItalic, label: 'Italic', action: () => document.execCommand('italic') },
-    { icon: FormatUnderlined, label: 'Underline', action: () => document.execCommand('underline') },
-    { icon: FormatStrikethrough, label: 'Strikethrough', action: () => document.execCommand('strikethrough') },
-    { icon: FormatQuote, label: 'Quote', action: () => document.execCommand('formatBlock', false, 'blockquote') },
-    { icon: FormatListBulleted, label: 'Bullet List', action: () => document.execCommand('insertUnorderedList') },
-    { icon: FormatListNumbered, label: 'Numbered List', action: () => document.execCommand('insertOrderedList') },
-    { icon: Code, label: 'Code', action: () => document.execCommand('formatBlock', false, 'pre') }
+    { icon: FormatBold, label: 'Bold', action: () => tiptapEditor && tiptapEditor.chain().focus().toggleBold().run(), shortcut: 'Ctrl+B' },
+    { icon: FormatItalic, label: 'Italic', action: () => tiptapEditor && tiptapEditor.chain().focus().toggleItalic().run(), shortcut: 'Ctrl+I' },
+    { icon: FormatUnderlined, label: 'Underline', action: () => tiptapEditor && tiptapEditor.chain().focus().toggleUnderline && tiptapEditor.chain().focus().toggleUnderline().run(), shortcut: 'Ctrl+U' },
+    { icon: FormatListBulleted, label: 'Bullet List', action: () => tiptapEditor && tiptapEditor.chain().focus().toggleBulletList().run() },
+    { icon: FormatListNumbered, label: 'Numbered List', action: () => tiptapEditor && tiptapEditor.chain().focus().toggleOrderedList && tiptapEditor.chain().focus().toggleOrderedList().run() },
+    { icon: LinkIcon, label: 'Insert Link', action: () => {
+      const url = prompt('Enter URL:');
+      if (url && tiptapEditor) tiptapEditor.chain().focus().setLink({ href: url }).run();
+    }},
+    { icon: FormatAlignLeft, label: 'Align Left', action: () => tiptapEditor && tiptapEditor.chain().focus().setTextAlign('left').run() },
+    { icon: FormatAlignCenter, label: 'Align Center', action: () => tiptapEditor && tiptapEditor.chain().focus().setTextAlign('center').run() },
+    { icon: FormatAlignRight, label: 'Align Right', action: () => tiptapEditor && tiptapEditor.chain().focus().setTextAlign('right').run() },
+    { icon: FormatAlignJustify, label: 'Justify', action: () => tiptapEditor && tiptapEditor.chain().focus().setTextAlign('justify').run() },
   ];
 
-  const alignActions = [
-    { icon: FormatAlignLeft, label: 'Align Left', action: () => document.execCommand('justifyLeft') },
-    { icon: FormatAlignCenter, label: 'Align Center', action: () => document.execCommand('justifyCenter') },
-    { icon: FormatAlignRight, label: 'Align Right', action: () => document.execCommand('justifyRight') },
-    { icon: FormatAlignJustify, label: 'Justify', action: () => document.execCommand('justifyFull') }
-  ];
-
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        setStatus({ message: 'Image size must be less than 10MB.', type: 'error' });
-        return;
-      }
-      setFeaturedImage(file);
-      const reader = new FileReader();
-      reader.onload = (event) => setImagePreview(event.target.result);
-      reader.readAsDataURL(file);
-    }
-  };
-
+  // Save draft, publish
+  const handleSaveDraft = () => showSnackbar('Draft saved', 'success');
   const handlePublish = async () => {
-    if (!formData.title || !formData.content) {
-      setStatus({ message: 'Title and content are required.', type: 'error' });
-      return;
-    }
-
+    const errors = [];
+    if (!formData.title) errors.push('Title required');
+    if (!formData.content) errors.push('Content required');
+    if (!formData.category) errors.push('Category required');
+    if (errors.length > 0) { showSnackbar(errors.join(', '), 'error'); return; }
     setStatus({ message: 'Publishing...', type: 'info', progress: 0 });
-    
-    // Simulate publishing process
-    for (let i = 0; i <= 100; i += 20) {
-      await new Promise(resolve => setTimeout(resolve, 200));
-      setStatus({ message: 'Publishing...', type: 'info', progress: i });
+    for (const step of [
+      { message: 'Validating...', progress: 20 },
+      { message: 'Optimizing...', progress: 40 },
+      { message: 'Generating SEO...', progress: 60 },
+      { message: 'Preparing preview...', progress: 80 },
+      { message: 'Publishing...', progress: 100 }
+    ]) {
+      await new Promise(res => setTimeout(res, 500));
+      setStatus({ message: step.message, type: 'info', progress: step.progress });
     }
-    
-    setStatus({ message: 'Article published successfully!', type: 'success', progress: 100 });
-    setTimeout(() => setStatus({ message: '', type: '', progress: 0 }), 3000);
+    setStatus({ message: 'Article published!', type: 'success', progress: 100 });
+    showSnackbar('Article published!', 'success');
+    setTimeout(() => setStatus({ message: '', type: '', progress: 0 }), 2000);
   };
 
-  const toggleFullscreen = () => {
-    setEditorState(prev => ({ ...prev, isFullscreen: !prev.isFullscreen }));
-  };
-
-  const toggleDistraction = () => {
-    setEditorState(prev => ({ ...prev, isDistraction: !prev.isDistraction }));
-  };
-
+  // Tag management
   const handleAddTag = () => {
-    if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
-      setFormData(prev => ({ 
-        ...prev, 
-        tags: [...prev.tags, newTag.trim()] 
-      }));
-      setNewTag('');
-    }
+    if (newTag.trim() && !formData.tags.includes(newTag.trim())) setFormData(prev => ({ ...prev, tags: [...prev.tags, newTag.trim()] })); setNewTag('');
   };
+  const handleRemoveTag = (tagToRemove) => setFormData(prev => ({ ...prev, tags: prev.tags.filter(tag => tag !== tagToRemove) }));
 
-  const handleRemoveTag = (tagToRemove) => {
-    setFormData(prev => ({ 
-      ...prev, 
-      tags: prev.tags.filter(tag => tag !== tagToRemove) 
-    }));
+  // Fullscreen
+  const toggleFullscreen = () => setEditorState(prev => ({ ...prev, isFullscreen: !prev.isFullscreen }));
+
+  // Keyboard shortcuts for Tiptap formatting
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && tiptapEditor) {
+        switch (e.key.toLowerCase()) {
+          case 'b': tiptapEditor.chain().focus().toggleBold().run(); e.preventDefault(); break;
+          case 'i': tiptapEditor.chain().focus().toggleItalic().run(); e.preventDefault(); break;
+          // Underline is not in StarterKit by default
+          default: break;
+        }
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [tiptapEditor]);
+
+  // Color helpers
+  const getColor = (score) => {
+    if (score > 80) return 'success.main';
+    if (score > 60) return 'info.main';
+    if (score > 40) return 'warning.main';
+    return 'error.main';
   };
-
-  const SidebarContent = () => (
-    <Box sx={{ width: 400, height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="h6">Advanced Settings</Typography>
-        <Tabs value={ui.sidebarTab} onChange={(e, v) => setUi(prev => ({ ...prev, sidebarTab: v }))}>
-          <Tab label="SEO" />
-          <Tab label="Publishing" />
-          <Tab label="Analytics" />
-        </Tabs>
-      </Box>
-
-      <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-        {ui.sidebarTab === 0 && (
-          <Stack spacing={3}>
-            <TextField
-              fullWidth
-              label="Meta Description"
-              value={formData.metaDescription}
-              onChange={(e) => setFormData(prev => ({ ...prev, metaDescription: e.target.value }))}
-              multiline
-              rows={3}
-              helperText={`${formData.metaDescription.length}/160 characters`}
-            />
-
-            <TextField
-              fullWidth
-              label="URL Slug"
-              value={formData.slug}
-              onChange={(e) => setFormData(prev => ({ ...prev, slug: e.target.value }))}
-              helperText="URL-friendly version of the title"
-            />
-
-            <Card>
-              <CardContent>
-                <Typography variant="subtitle2" gutterBottom>SEO Preview</Typography>
-                <Typography variant="body2" color="primary" sx={{ textDecoration: 'underline' }}>
-                  {formData.title || 'Your Article Title'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {formData.metaDescription || 'Your meta description will appear here...'}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Stack>
-        )}
-
-        {ui.sidebarTab === 1 && (
-          <Stack spacing={3}>
-            <FormControl fullWidth>
-              <InputLabel>Status</InputLabel>
-              <Select
-                value={formData.status}
-                onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-              >
-                <MenuItem value="draft">Draft</MenuItem>
-                <MenuItem value="review">Under Review</MenuItem>
-                <MenuItem value="scheduled">Scheduled</MenuItem>
-                <MenuItem value="published">Published</MenuItem>
-              </Select>
-            </FormControl>
-
-            <TextField
-              fullWidth
-              label="Publish Date"
-              type="datetime-local"
-              value={formData.publishAt || ''}
-              onChange={(e) => setFormData(prev => ({ ...prev, publishAt: e.target.value }))}
-              InputLabelProps={{ shrink: true }}
-            />
-
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>Visibility</Typography>
-              <FormControlLabel
-                control={<Switch defaultChecked />}
-                label="Public"
-              />
-              <FormControlLabel
-                control={<Switch />}
-                label="Allow Comments"
-              />
-              <FormControlLabel
-                control={<Switch />}
-                label="Allow Sharing"
-              />
-            </Box>
-          </Stack>
-        )}
-
-        {ui.sidebarTab === 2 && (
-          <Stack spacing={3}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>Content Statistics</Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <Box textAlign="center">
-                      <Typography variant="h4" color="primary">{stats.wordCount}</Typography>
-                      <Typography variant="caption">Words</Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Box textAlign="center">
-                      <Typography variant="h4" color="primary">{stats.readingTime}</Typography>
-                      <Typography variant="caption">Min Read</Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Box textAlign="center">
-                      <Typography variant="h4" color="primary">{stats.charCount}</Typography>
-                      <Typography variant="caption">Characters</Typography>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Box textAlign="center">
-                      <Typography variant="h4" color="primary">{stats.paragraphCount}</Typography>
-                      <Typography variant="caption">Paragraphs</Typography>
-                    </Box>
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>Readability Score</Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <Box sx={{ width: '100%', mr: 1 }}>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={stats.readabilityScore} 
-                      sx={{ height: 10, borderRadius: 5 }}
-                    />
-                  </Box>
-                  <Typography variant="body2" color="text.secondary">
-                    {stats.readabilityScore}/100
-                  </Typography>
-                </Box>
-                <Typography variant="body2" color="text.secondary">
-                  {stats.readabilityScore > 80 ? 'Very Easy' : 
-                   stats.readabilityScore > 60 ? 'Easy' : 
-                   stats.readabilityScore > 40 ? 'Moderate' : 
-                   stats.readabilityScore > 20 ? 'Difficult' : 'Very Difficult'}
-                </Typography>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>AI Suggestions</Typography>
-                <Button fullWidth startIcon={<AutoAwesome />} sx={{ mb: 1 }}>
-                  Improve Readability
-                </Button>
-                <Button fullWidth startIcon={<TrendingUp />} sx={{ mb: 1 }}>
-                  SEO Optimization
-                </Button>
-                <Button fullWidth startIcon={<Psychology />}>
-                  Enhance Engagement
-                </Button>
-              </CardContent>
-            </Card>
-          </Stack>
-        )}
-      </Box>
-    </Box>
-  );
 
   return (
-    <Box sx={{ 
-      height: '100vh', 
-      display: 'flex', 
-      flexDirection: 'column',
-      mt: 20,
-      bgcolor: editorState.isDistraction ? 'background.paper' : 'background.default'
-    }}>
-      {/* Top Toolbar */}
-      {!editorState.isDistraction && (
-        <Paper elevation={1} sx={{ p: 1, borderBottom: 1, borderColor: 'divider' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="h6" sx={{ mr: 2 }}>
-                {formData.title || 'Untitled Article'}
-              </Typography>
-              {editorState.showWordCount && (
-                <Chip label={`${stats.wordCount} words`} size="small" />
-              )}
-              {editorState.showReadingTime && (
-                <Chip label={`${stats.readingTime} min read`} size="small" />
-              )}
-            </Box>
-            
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Button startIcon={<SaveIcon />} size="small">
-                Save
-              </Button>
-              <Button startIcon={<PreviewIcon />} size="small">
-                Preview
-              </Button>
-              <Button 
-                variant="contained" 
-                startIcon={<PublishIcon />}
-                onClick={handlePublish}
-              >
-                Publish
-              </Button>
-              <IconButton onClick={() => setUi(prev => ({ ...prev, sidebarOpen: true }))}>
-                <SettingsIcon />
-              </IconButton>
-            </Box>
-          </Box>
-        </Paper>
-      )}
-
-      {/* Format Toolbar */}
-      {!editorState.isDistraction && (
-        <Paper elevation={0} sx={{ p: 1, borderBottom: 1, borderColor: 'divider' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-            {/* Undo/Redo */}
-            <IconButton size="small" onClick={() => document.execCommand('undo')}>
-              <Undo />
-            </IconButton>
-            <IconButton size="small" onClick={() => document.execCommand('redo')}>
-              <Redo />
-            </IconButton>
-            
-            <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-            
-            {/* Format Actions */}
-            {formatActions.map(({ icon: Icon, label, action }) => (
-              <Tooltip key={label} title={label}>
-                <IconButton size="small" onClick={action}>
-                  <Icon />
-                </IconButton>
-              </Tooltip>
-            ))}
-            
-            <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-            
-            {/* Alignment */}
-            {alignActions.map(({ icon: Icon, label, action }) => (
-              <Tooltip key={label} title={label}>
-                <IconButton size="small" onClick={action}>
-                  <Icon />
-                </IconButton>
-              </Tooltip>
-            ))}
-            
-            <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-            
-            {/* Insert Tools */}
-            <Tooltip title="Insert Link">
-              <IconButton size="small" onClick={() => setUi(prev => ({ ...prev, linkDialogOpen: true }))}>
-                <LinkIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Insert Image">
-              <IconButton size="small" onClick={() => setUi(prev => ({ ...prev, imageDialogOpen: true }))}>
-                <ImageIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Insert Table">
-              <IconButton size="small" onClick={() => setUi(prev => ({ ...prev, tableDialogOpen: true }))}>
-                <TableChart />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Insert Video">
-              <IconButton size="small">
-                <VideoLibrary />
-              </IconButton>
-            </Tooltip>
-            
-            <Box sx={{ flexGrow: 1 }} />
-            
-            {/* View Options */}
-            <Tooltip title="Distraction Free">
-              <IconButton size="small" onClick={toggleDistraction}>
-                <MenuBook />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={editorState.isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}>
-              <IconButton size="small" onClick={toggleFullscreen}>
-                {editorState.isFullscreen ? <FullscreenExit /> : <Fullscreen />}
-              </IconButton>
-            </Tooltip>
-          </Box>
-        </Paper>
-      )}
-
-      {/* Status Bar */}
-      {status.message && (
-        <Alert 
-          severity={status.type} 
-          sx={{ borderRadius: 0 }}
-          action={
-            status.progress > 0 && (
-              <LinearProgress 
-                variant="determinate" 
-                value={status.progress} 
-                sx={{ width: 100 }}
-              />
-            )
-          }
-        >
-          {status.message}
-        </Alert>
-      )}
-
-      {/* Main Content Area */}
-      <Box sx={{ 
-        flex: 1, 
-        display: 'flex',
-        overflow: 'hidden'
+    <Box
+      sx={{
+        bgcolor: t => t.palette.background.default,
+        minHeight: '100vh', width: '100vw',
+        display: 'flex', flexDirection: 'column',
+        position: 'relative'
+      }}
+    >
+      {/* Header */}
+      <Box sx={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1201,
+        bgcolor: t => t.palette.background.paper,
+        boxShadow: t => t.shadows[1],
+        borderBottom: t => `1px solid ${t.palette.divider}`,
+        height: HEADER_HEIGHT,
+        display: 'flex', alignItems: 'center', px: 4
       }}>
-        <Container 
-          maxWidth={false}
-          sx={{ 
-            flex: 1,
-            py: 3,
-            px: editorState.isDistraction ? 8 : 3,
-            overflow: 'auto',
-            maxWidth: editorState.maxWidth,
-            mx: 'auto'
-          }}
-        >
-          {/* Article Meta Fields */}
-          <Stack spacing={3} sx={{ mb: 4 }}>
-            <TextField
-              fullWidth
-              label="Article Title"
-              value={formData.title}
-              onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-              variant="outlined"
-              size="large"
-              placeholder="Enter your article title..."
-              sx={{ 
-                '& .MuiInputBase-input': { 
-                  fontSize: '1.5rem',
-                  fontWeight: 'bold'
-                }
-              }}
-            />
-            
-            <TextField
-              fullWidth
-              label="Subtitle (Optional)"
-              value={formData.subtitle}
-              onChange={(e) => setFormData(prev => ({ ...prev, subtitle: e.target.value }))}
-              variant="outlined"
-              placeholder="Add a subtitle to provide more context..."
-            />
-
-            <TextField
-              fullWidth
-              label="Article Summary"
-              value={formData.summary}
-              onChange={(e) => setFormData(prev => ({ ...prev, summary: e.target.value }))}
-              multiline
-              rows={3}
-              helperText="A brief description for previews and social sharing (recommended 150-160 characters)"
-              placeholder="Write a compelling summary of your article..."
-            />
-
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <FormControl sx={{ minWidth: 200 }}>
-                <InputLabel>Category</InputLabel>
-                <Select
-                  value={formData.category}
-                  onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                  label="Category"
-                >
-                  {categories.map(cat => (
-                    <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="subtitle2" gutterBottom>Tags</Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
-                  {formData.tags.map((tag, index) => (
-                    <Chip 
-                      key={index} 
-                      label={tag} 
-                      onDelete={() => handleRemoveTag(tag)}
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                    />
-                  ))}
-                </Box>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <TextField
-                    size="small"
-                    placeholder="Add tags..."
-                    value={newTag}
-                    onChange={(e) => setNewTag(e.target.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        handleAddTag();
-                      }
-                    }}
-                    sx={{ flex: 1 }}
-                  />
-                  <Button 
-                    size="small" 
-                    onClick={handleAddTag}
-                    disabled={!newTag.trim()}
-                  >
-                    Add
-                  </Button>
-                </Box>
-              </Box>
-            </Box>
-
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>Featured Image</Typography>
-              <input
-                type="file"
-                accept="image/*"
-                ref={fileInputRef}
-                onChange={handleImageUpload}
-                style={{ display: 'none' }}
-              />
-              {!imagePreview ? (
-                <Button
-                  variant="outlined"
-                  startIcon={<CloudUpload />}
-                  onClick={() => fileInputRef.current?.click()}
-                  sx={{ height: 120, width: '100%', borderStyle: 'dashed' }}
-                >
-                  Upload Featured Image
-                </Button>
-              ) : (
-                <Box sx={{ position: 'relative', display: 'inline-block' }}>
-                  <img 
-                    src={imagePreview} 
-                    alt="Featured" 
-                    style={{ width: '100%', maxHeight: 300, objectFit: 'cover', borderRadius: 8 }}
-                  />
-                  <IconButton
-                    size="small"
-                    onClick={() => { setImagePreview(null); setFeaturedImage(null); }}
-                    sx={{ position: 'absolute', top: 8, right: 8, bgcolor: 'rgba(0,0,0,0.5)', color: 'white' }}
-                  >
-                    <Delete />
-                  </IconButton>
-                </Box>
-              )}
-            </Box>
-          </Stack>
-
-          {/* Article Content Editor */}
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Article Content
-            </Typography>
-            <Box
-              ref={editorRef}
-              contentEditable
-              suppressContentEditableWarning
-              onInput={(e) => handleContentChange(e.target.innerHTML)}
-              sx={{
-                minHeight: 500,
-                fontSize: editorState.fontSize,
-                lineHeight: editorState.lineHeight,
-                outline: 'none',
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 1,
-                p: 3,
-                bgcolor: 'background.paper',
-                '&:focus': {
-                  outline: 'none',
-                  borderColor: 'primary.main'
-                },
-                '&:empty:before': {
-                  content: '"Start writing your article here..."',
-                  color: 'text.disabled',
-                  fontStyle: 'italic'
-                },
-                '& p': {
-                  margin: '1em 0',
-                  '&:first-of-type': {
-                    marginTop: 0
-                  }
-                },
-                '& h1, & h2, & h3': {
-                  fontWeight: 'bold',
-                  margin: '1.5em 0 0.5em 0'
-                },
-                '& h1': { fontSize: '2em' },
-                '& h2': { fontSize: '1.5em' },
-                '& h3': { fontSize: '1.25em' },
-                '& blockquote': {
-                  borderLeft: '4px solid',
-                  borderColor: 'primary.main',
-                  pl: 2,
-                  fontStyle: 'italic',
-                  margin: '1em 0'
-                },
-                '& ul, & ol': {
-                  margin: '1em 0',
-                  pl: 2
-                },
-                '& pre': {
-                  bgcolor: 'grey.100',
-                  p: 2,
-                  borderRadius: 1,
-                  overflow: 'auto',
-                  fontFamily: 'monospace'
-                }
-              }}
-            />
-          </Box>
-
-          {/* Content Statistics */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Chip 
-                icon={<AccessTime />}
-                label={`${stats.readingTime} min read`} 
-                size="small" 
-                variant="outlined"
-              />
-              <Chip 
-                label={`${stats.wordCount} words`} 
-                size="small" 
-                variant="outlined"
-              />
-              <Chip 
-                label={`${stats.charCount} characters`} 
-                size="small" 
-                variant="outlined"
-              />
-            </Box>
-            <Button 
-              variant="contained" 
-              size="large"
-              startIcon={<PublishIcon />}
-              onClick={handlePublish}
-              disabled={!formData.title || !formData.content}
-            >
-              Publish Article
-            </Button>
-          </Box>
-        </Container>
+        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
+          <SmartToy color="primary" sx={{ fontSize: 32, mr: 1 }} />
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>Submit Article</Typography>
+        </Box>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <Button variant="outlined" startIcon={<SaveIcon />} size="small" onClick={handleSaveDraft} sx={{ borderRadius: 2 }}>Save Draft</Button>
+          <Button variant="outlined" startIcon={<PreviewIcon />} size="small" onClick={() => setUi(prev => ({ ...prev, previewMode: !prev.previewMode }))} sx={{ borderRadius: 2 }}>{ui.previewMode ? 'Exit Preview' : 'Preview'}</Button>
+          <Button variant="contained" startIcon={<PublishIcon />} size="small" onClick={handlePublish} sx={{ borderRadius: 2 }}>Publish</Button>
+          <IconButton onClick={() => setUi(prev => ({ ...prev, settingsOpen: true }))}><SettingsIcon /></IconButton>
+          <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontWeight: 600 }}>{formData.author?.[0]?.toUpperCase() ?? 'U'}</Avatar>
+        </Stack>
       </Box>
 
-      {/* Settings Sidebar */}
-      <Drawer
-        anchor="right"
-        open={ui.sidebarOpen}
-        onClose={() => setUi(prev => ({ ...prev, sidebarOpen: false }))}
-      >
-        <SidebarContent />
-      </Drawer>
+      {/* Split Screen */}
+      <Box sx={{
+        flex: 1,
+        pt: `${HEADER_HEIGHT}px`,
+        display: 'flex',
+        minHeight: '100vh',
+        width: '100vw',
+        overflow: 'hidden'
+      }}>
+        {/* Editor - left pane */}
+        <Box
+          sx={{
+            flex: 2,
+            minWidth: 0,
+            borderRight: t => `1px solid ${t.palette.divider}`,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            height: `calc(100vh - ${HEADER_HEIGHT}px)`,
+            bgcolor: 'background.default',
+            overflowY: 'auto',
+            // Hide scrollbar for all major browsers:
+            scrollbarWidth: 'none', // Firefox
+            msOverflowStyle: 'none', // IE 10+
+            '&::-webkit-scrollbar': { display: 'none' }, // Chrome/Safari/Webkit
+          }}
+        >
+          {/* Editor toolbar */}
+          <Box sx={{ display: 'flex', alignItems: 'center', py: 1, px: 3, borderBottom: t => `1px solid ${t.palette.divider}`, gap: 1 }}>
+            {formatActions.map((item, index) => (
+              <Tooltip key={index} title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}>
+                <IconButton size="small" onClick={item.action} disabled={!tiptapEditor}><item.icon fontSize="small" /></IconButton>
+              </Tooltip>
+            ))}
+            <Divider orientation="vertical" flexItem sx={{ mx: 1, height: 28 }} />
+            <Tooltip title="Undo"><IconButton size="small" onClick={() => tiptapEditor && tiptapEditor.chain().focus().undo().run()} disabled={!tiptapEditor}><Undo /></IconButton></Tooltip>
+            <Tooltip title="Redo"><IconButton size="small" onClick={() => tiptapEditor && tiptapEditor.chain().focus().redo().run()} disabled={!tiptapEditor}><Redo /></IconButton></Tooltip>
+            <Box sx={{ flexGrow: 1 }} />
+            <Tooltip title="Toggle Fullscreen"><IconButton size="small" onClick={toggleFullscreen}>{editorState.isFullscreen ? <FullscreenExit /> : <Fullscreen />}</IconButton></Tooltip>
+          </Box>
 
-      {/* Insert Link Dialog */}
-      <Dialog open={ui.linkDialogOpen} onClose={() => setUi(prev => ({ ...prev, linkDialogOpen: false }))}>
-        <DialogTitle>Insert Link</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField
-              autoFocus
-              fullWidth
-              label="URL"
-              placeholder="https://example.com"
-            />
-            <TextField
-              fullWidth
-              label="Text to display"
-              placeholder="Link text"
-            />
-            <FormControlLabel
-              control={<Switch />}
-              label="Open in new tab"
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUi(prev => ({ ...prev, linkDialogOpen: false }))}>Cancel</Button>
-          <Button variant="contained">Insert</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Insert Image Dialog */}
-      <Dialog 
-        open={ui.imageDialogOpen} 
-        onClose={() => setUi(prev => ({ ...prev, imageDialogOpen: false }))}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Insert Image</DialogTitle>
-        <DialogContent>
-          <Tabs value={0} sx={{ mb: 2 }}>
-            <Tab label="Upload" />
-            <Tab label="Gallery" />
-            <Tab label="URL" />
-          </Tabs>
-          
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Box sx={{ 
-              border: '1px dashed', 
-              borderColor: 'divider', 
-              borderRadius: 1, 
-              p: 4,
-              textAlign: 'center'
-            }}>
-              <CloudUpload fontSize="large" color="action" />
-              <Typography variant="body1" sx={{ mt: 1 }}>
-                Drag and drop image here or click to browse
-              </Typography>
-              <Button 
-                variant="outlined" 
-                sx={{ mt: 2 }}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Select Image
-              </Button>
-            </Box>
-
-            <TextField
-              fullWidth
-              label="Alternative Text"
-              helperText="Description for accessibility and SEO"
-            />
-
-            <Box sx={{ display: 'flex', gap: 2 }}>
+          {/* Editor body */}
+          <Box sx={{
+            flex: 1,
+            p: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            bgcolor: 'background.default'
+          }}>
+            <Box sx={{ p: 4, pb: 2 }}>
               <TextField
-                fullWidth
-                label="Width"
-                type="number"
-                defaultValue="100"
+                fullWidth variant="standard" placeholder="Article Title..."
+                value={formData.title} onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
                 InputProps={{
-                  endAdornment: <InputAdornment position="end">%</InputAdornment>
-                }}
+                  disableUnderline: true,
+                  sx: { fontSize: '2.3rem', fontWeight: 700, letterSpacing: '-0.5px' }
+                }} sx={{ mb: 1 }}
               />
               <TextField
-                fullWidth
-                label="Alignment"
-                select
-                defaultValue="center"
-              >
-                <MenuItem value="left">Left</MenuItem>
-                <MenuItem value="center">Center</MenuItem>
-                <MenuItem value="right">Right</MenuItem>
-              </TextField>
-            </Box>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUi(prev => ({ ...prev, imageDialogOpen: false }))}>Cancel</Button>
-          <Button variant="contained">Insert</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Insert Table Dialog */}
-      <Dialog open={ui.tableDialogOpen} onClose={() => setUi(prev => ({ ...prev, tableDialogOpen: false }))}>
-        <DialogTitle>Insert Table</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <TextField
-                label="Rows"
-                type="number"
-                defaultValue="3"
+                fullWidth variant="standard" placeholder="Catchy Subtitle..."
+                value={formData.subtitle} onChange={(e) => setFormData(prev => ({ ...prev, subtitle: e.target.value }))}
+                InputProps={{
+                  disableUnderline: true,
+                  sx: { fontSize: '1.25rem', color: 'text.secondary', mt: 1 }
+                }} sx={{ mb: 2 }}
               />
-              <TextField
-                label="Columns"
-                type="number"
-                defaultValue="3"
-              />
+              <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+                <FormControl sx={{ minWidth: 180 }}>
+                  <InputLabel id="cat-label"><Category sx={{ mr: 1 }} fontSize="small" />Category</InputLabel>
+                  <Select
+                    labelId="cat-label"
+                    value={formData.category}
+                    onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
+                    label="Category"
+                    size="small"
+                  >
+                    {categoriesList.map(cat =>
+                      <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                    )}
+                  </Select>
+                </FormControl>
+              </Stack>
             </Box>
+            <Divider sx={{ mb: 0 }} />
 
-            <Box>
-              <Typography variant="subtitle2" gutterBottom>Table Style</Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button variant="outlined">Basic</Button>
-                <Button variant="outlined">Bordered</Button>
-                <Button variant="outlined">Striped</Button>
-              </Box>
-            </Box>
-
-            <FormControlLabel
-              control={<Switch defaultChecked />}
-              label="Include header row"
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUi(prev => ({ ...prev, tableDialogOpen: false }))}>Cancel</Button>
-          <Button variant="contained">Insert</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* AI Assist Panel */}
-      <Drawer
-        anchor="bottom"
-        open={ui.aiAssistOpen}
-        onClose={() => setUi(prev => ({ ...prev, aiAssistOpen: false }))}
-        PaperProps={{
-          sx: { height: '40vh' }
-        }}
-      >
-        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <Typography variant="h6" gutterBottom>AI Writing Assistant</Typography>
-          
-          <Tabs value={0} sx={{ mb: 2 }}>
-            <Tab label="Improve" />
-            <Tab label="Summarize" />
-            <Tab label="Expand" />
-            <Tab label="Rephrase" />
-          </Tabs>
-
-          <Box sx={{ flex: 1, overflow: 'auto', mb: 2 }}>
-            <Typography variant="body1">
-              Select text to get AI suggestions or ask for general improvements to your content.
-            </Typography>
-          </Box>
-
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <TextField
-              fullWidth
-              placeholder="Ask AI to help with your writing..."
-            />
-            <Button variant="contained">Ask</Button>
+            {/* Actual content editor - Tiptap */}
+            {/* Tiptap Editor Content */}
+            {tiptapEditor && <TiptapEditor
+              content={formData.content}
+              onChange={html => {
+                setFormData(prev => ({ ...prev, content: html }));
+                analyzeContent(html);
+              }}
+              fontSize={editorState.fontSize}
+              fontFamily={editorState.fontFamily}
+              lineHeight={editorState.lineHeight}
+              editor={tiptapEditor}
+            />}
           </Box>
         </Box>
-      </Drawer>
 
-      {/* Floating Action Buttons */}
-      {!ui.sidebarOpen && (
-        <Box sx={{ position: 'fixed', right: 16, bottom: 16, display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <Tooltip title="AI Assist">
-            <Fab 
-              color="primary" 
-              onClick={() => setUi(prev => ({ ...prev, aiAssistOpen: true }))}
-            >
-              <AutoAwesome />
-            </Fab>
-          </Tooltip>
-          
-          <Tooltip title="Save Draft">
-            <Fab color="secondary">
-              <SaveIcon />
-            </Fab>
-          </Tooltip>
+        {/* Analysis/AI/Stats - right pane */}
+        <Box sx={{
+          flex: 1,
+          minWidth: 320,
+          maxWidth: 430,
+          height: 'calc(100vh - 64px)',
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative',
+          bgcolor: 'background.paper',
+          overflowY: 'auto',
+          scrollbarWidth: 'none', // Firefox
+          msOverflowStyle: 'none', // IE 10+
+          '&::-webkit-scrollbar': { display: 'none' }, // Chrome/Safari/Webkit
+        }}>
+          <Box sx={{ p: 4, pb: 1 }}>
+            {/* Overall Score */}
+            <Box sx={{ textAlign: 'center', mb: 2 }}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>Overall score</Typography>
+              <Typography variant="h2" sx={{
+                fontWeight: 700,
+                color: getColor((stats.readabilityScore + stats.engagement + stats.seoScore) / 3),
+                my: 1
+              }}>{Math.round((stats.readabilityScore + stats.engagement + stats.seoScore) / 3)}</Typography>
+              <Typography variant="body2" color="text.secondary">{stats.wordCount} words</Typography>
+            </Box>
+            <Divider sx={{ mb: 2 }} />
+
+            {/* Suggestions */}
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>Suggestions</Typography>
+              <Stack spacing={2}>
+                {aiSuggestions.length === 0 ? (
+                  <Alert severity="success" sx={{ borderRadius: 2 }}>Your content looks good!</Alert>
+                ) : (
+                  aiSuggestions.map((s, i) => (
+                    <Alert key={i} severity={
+                      s.priority === 'high' ? 'error' : s.priority === 'medium' ? 'warning' : 'info'
+                    } sx={{ borderRadius: 2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{s.title}</Typography>
+                      <Typography variant="body2">{s.description}</Typography>
+                    </Alert>
+                  ))
+                )}
+              </Stack>
+            </Box>
+
+            {/* Stats */}
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>Document stats</Typography>
+              <Grid container spacing={1}>
+                <Grid item xs={6}>
+                  <Typography variant="body2"><b>Characters:</b> {stats.charCount}</Typography>
+                  <Typography variant="body2"><b>Sentences:</b> {stats.sentenceCount}</Typography>
+                  <Typography variant="body2"><b>Paragraphs:</b> {stats.paragraphCount}</Typography>
+                  <Typography variant="body2"><b>Subheadings:</b> {stats.subheadings}</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2"><b>Reading time:</b> {stats.readingTime} min</Typography>
+                  <Typography variant="body2"><b>Complex words:</b> {stats.complexWords}</Typography>
+                  <Typography variant="body2"><b>Passive voice:</b> {stats.passiveVoice}</Typography>
+                  <Typography variant="body2"><b>Transition words:</b> {stats.transitionWords}</Typography>
+                </Grid>
+              </Grid>
+            </Box>
+
+            {/* AI Writing Assistant */}
+            <Box sx={{
+              border: t => `1px solid ${t.palette.divider}`,
+              borderRadius: 3,
+              p: 2,
+              mt: 1
+            }}>
+              <Typography variant="h6" sx={{ mb: 1, display: 'flex', alignItems: 'center' }}>
+                <SmartToy fontSize="small" sx={{ mr: 1, color: 'primary.main' }} />
+                AI Writing Assistant
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Get AI-powered writing suggestions.
+              </Typography>
+              <Button variant="outlined" fullWidth sx={{ borderRadius: 2 }} startIcon={<AutoAwesome />}>Improve with AI</Button>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+
+      {/* Snackbar */}
+      <Snackbar
+        open={ui.snackbarOpen}
+        autoHideDuration={6000}
+        onClose={() => setUi(prev => ({ ...prev, snackbarOpen: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setUi(prev => ({ ...prev, snackbarOpen: false }))}
+          severity={ui.snackbarSeverity}
+          sx={{ width: '100%', borderRadius: 2, boxShadow: 3 }}
+        >{ui.snackbarMessage}</Alert>
+      </Snackbar>
+
+      {/* Settings Dialog */}
+      <Dialog open={ui.settingsOpen} onClose={() => setUi(prev => ({ ...prev, settingsOpen: false }))}>
+        <DialogTitle>Editor Settings</DialogTitle>
+        <DialogContent>
+          <FormControlLabel
+            control={<Switch checked={editorState.enableAutoSave} onChange={(e) => setEditorState(prev => ({ ...prev, enableAutoSave: e.target.checked }))} />}
+            label="Enable Auto-Save"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUi(prev => ({ ...prev, settingsOpen: false }))}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Status Alert */}
+      {status.message && (
+        <Box sx={{ position: 'fixed', top: 90, right: 20, zIndex: 1300, minWidth: 300 }}>
+          <Alert
+            severity={status.type}
+            icon={
+              status.type === 'success' ? <CheckCircle /> :
+                status.type === 'error' ? <Error /> :
+                  status.type === 'warning' ? <Warning /> : <Info />
+            }
+            action={
+              <IconButton
+                size="small"
+                onClick={() => setStatus({ message: '', type: '', progress: 0 })}
+              ><Close /></IconButton>
+            }
+            sx={{ boxShadow: 3, borderRadius: 2 }}
+          >
+            {status.message}
+            {status.progress > 0 && (
+              <LinearProgress variant="determinate" value={status.progress} sx={{ mt: 1, borderRadius: 1 }} />
+            )}
+          </Alert>
         </Box>
       )}
     </Box>

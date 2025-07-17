@@ -5,7 +5,7 @@ import Footer from './Footer';
 import Newsletter from '../Newsletter';
 import HeroSection from '../HeroSection';
 
-const Layout = ({ children, showHero = false, showHeader = true, showNewsletter = true, isDarkMode, setIsDarkMode }) => {
+const Layout = ({ children, showHero = false, showHeader = true, showNewsletter = true, isDarkMode, setIsDarkMode, editorMode = false }) => {
   return (
     <Box sx={{ 
       display: 'flex', 
@@ -14,7 +14,7 @@ const Layout = ({ children, showHero = false, showHeader = true, showNewsletter 
       backgroundColor: 'background.default',
       overflowX: 'hidden'
     }}>
-      {showHeader && <Header isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />}
+      {showHeader && <Header isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} editorMode={editorMode} />}
       
       
       {/* Hero Section */}

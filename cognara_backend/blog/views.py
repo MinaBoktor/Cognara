@@ -14,6 +14,8 @@ from google.auth.transport import requests as google_requests
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 import time
+from django.views.decorators.csrf import csrf_exempt
+
 
 
 
@@ -33,6 +35,7 @@ def get_csrf_token(request):
 @api_view(['GET'])
 def get_articles(request):
     try:
+        print(SUPABASE_URL)
         # This will raise an exception if Supabase fails
         response = supabase.table('articles').select('*').execute()
 
@@ -99,23 +102,26 @@ def get_comments(request, article_id):
 
 
 
-
+@csrf_exempt
 @api_view(['POST'])
+@permission_classes([AllowAny])
 @require_session_login
-def post_comments(request):
+@require_frontend_token
+def post_comment(request):
+    print("POST COMMENT VIEW CALLED")
     try:
         comment = request.data.get('comment')
-        user_id = request.session['id']
         article_id = request.data.get('article_id')
-
-        print(comment, user_id, article_id)
-
+        user_id = request.session.get('id')
+        
+        print(f"Comment: {comment}, Article ID: {article_id}, User ID: {user_id}")
+        
         if not comment or not article_id:
-            return JsonResponse({'error': 'Comment and Article ID are missing'}, status=400)
+            return Response({'error': 'Comment and Article ID are required'}, status=status.HTTP_400_BAD_REQUEST)
 
         user = get_user(user_id)
         if not user:
-            return JsonResponse({'error': 'User not found'}, status=400)
+            return Response({'error': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
 
         data = {
             'content': comment,
@@ -124,11 +130,12 @@ def post_comments(request):
         }
 
         response = supabase.table('comments').insert(data).execute()
-
-        return JsonResponse({'status': '1'}, status=200)
+        
+        return Response({'status': 'success'}, status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        print(f"Error in post_comment: {e}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @require_frontend_token

@@ -30,10 +30,35 @@ export const articlesAPI = {
   getAll: () => apiClient.get('articles'),
   getById: (id) => apiClient.get(`articles/${id}`),
   getComments: (id) => apiClient.get(`articles/${id}/comments`),
-  postComment: (article_id, comment) => apiClient.post('articles/add-comment', {
-    comment: comment,
-    article_id: article_id
-  }),
+  postComment: async (article_id, comment) => {
+    try {
+      // Check if user is authenticated first
+      const authStatus = await getAuthStatus();
+      if (!authStatus.authenticated) {
+        throw new Error('User not authenticated');
+      }
+      
+      // Ensure CSRF token is available
+      await fetchCSRFToken();
+      
+      const response = await apiClient.post('articles/add-comment', {
+        comment: comment,
+        article_id: article_id
+      });
+      
+      return response;
+    } catch (error) {
+      console.error('Error posting comment:', error);
+      
+      // If authentication failed, redirect to login
+      if (error.response?.status === 401) {
+        // Handle authentication error (redirect to login, etc.)
+        window.location.href = '/login';
+      }
+      
+      throw error;
+    }
+  },
   getImages: (articleId) => apiClient.post('get-article-images', { article_id: articleId }),
 };
 
