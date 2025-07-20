@@ -1,31 +1,41 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import TiptapEditor from '../components/Editor/TiptapEditor';
-import { useEditor } from '@tiptap/react';
+import React, { useState, useCallback, useEffect, useRef, useContext } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Bold from '@tiptap/extension-bold';
+import Italic from '@tiptap/extension-italic';
+import Underline from '@tiptap/extension-underline';
+import BulletList from '@tiptap/extension-bullet-list';
+import OrderedList from '@tiptap/extension-ordered-list';
+import ListItem from '@tiptap/extension-list-item';
+import Link from '@tiptap/extension-link';
+import TextAlign from '@tiptap/extension-text-align';
+import Placeholder from '@tiptap/extension-placeholder';
+import { articlesAPI } from '../services/api';
 import {
-  Box, Button, TextField, Typography, Alert, IconButton, Tooltip, Divider, Chip, FormControl, InputLabel, Select,
-  MenuItem, Stack, Snackbar, Avatar, Grid, LinearProgress, Switch, FormControlLabel, Dialog, DialogTitle, DialogContent, DialogActions
+  Box, Button, TextField, Typography, Alert, IconButton, Tooltip, Divider,
+  Stack, Snackbar, Avatar, Grid, LinearProgress, Switch, FormControlLabel, 
+  Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment, ListItemIcon, MenuItem,
 } from '@mui/material';
+
 import {
-  FormatBold, FormatItalic, FormatUnderlined, FormatListBulleted, FormatListNumbered, Link as LinkIcon,
+  FormatBold, FormatItalic, FormatUnderlined, FormatListBulleted, FormatListNumbered, 
+  Link as LinkIcon, // Change this line
   FormatAlignLeft, FormatAlignCenter, FormatAlignRight, FormatAlignJustify,
   Publish as PublishIcon, Save as SaveIcon, Preview as PreviewIcon,
   Fullscreen, FullscreenExit, Settings as SettingsIcon, AutoAwesome,
-  CheckCircle, Warning, Error, Info, Close, SmartToy, Undo, Redo, Category
+  CheckCircle, Warning, Error, Info, Close, SmartToy, Undo, Redo,
 } from '@mui/icons-material';
+import { Brightness4 as DarkModeIcon, Brightness7 as LightModeIcon } from '@mui/icons-material';
+import { useTheme, alpha } from '@mui/material/styles';
 
-const categoriesList = [
-  'Technology', 'Business', 'Science', 'Health', 'Entertainment', 'Sports', 'Lifestyle', 'Travel', 'Food', 'Fashion', 'Education',
-  'Finance', 'Politics', 'Environment', 'Culture', 'Arts'
-];
-
-const SubmitArticlePage = () => {
+const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
+  const theme = useTheme();
   const HEADER_HEIGHT = 64;
   const [formData, setFormData] = useState({
-    title: '', subtitle: '', content: '', category: '',
+    title: '', subtitle: '', content: '',
     author: 'Current User'
   });
+  
   const [editorState, setEditorState] = useState({
     isFullscreen: false, fontSize: 18, lineHeight: 1.7, fontFamily: 'Inter', enableAutoSave: true, saveInterval: 30000
   });
@@ -36,22 +46,80 @@ const SubmitArticlePage = () => {
     readabilityScore: 0, engagement: 0, seoScore: 0, complexWords: 0, passiveVoice: 0, transitionWords: 0, subheadings: 0, images: 0, links: 0,
   });
   const [aiSuggestions, setAiSuggestions] = useState([]);
-  const [newTag, setNewTag] = useState('');
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [articleId, setArticleId] = useState(-1); // Track if this is an existing article
+  const [lastSaved, setLastSaved] = useState(null);
   const autoSaveRef = useRef(null);
 
-  // Tiptap editor instance for toolbar actions
-  const tiptapEditor = useEditor({
-    extensions: [StarterKit, Bold],
+  const handleThemeToggle = () => {
+    setIsDarkMode(!isDarkMode);
+  };
+
+  // API Configuration
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api';
+
+  // API call function
+  const submitArticle = async (articleData, articleId = -1, isDraft = false) => {
+    try {
+      const response = await articlesAPI.submit(articleData, articleId, isDraft);
+      
+      if (response.error) {
+        throw new Error(response.error || 'Failed to submit article');
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('API Error:', error);
+      throw error;
+    }
+  };
+
+  // Single Tiptap editor instance
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Bold,
+      Italic,
+      Underline,
+      BulletList,
+      OrderedList,
+      ListItem,
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          class: 'link-style',
+        },
+      }),
+      TextAlign.configure({ 
+        types: ['heading', 'paragraph'],
+        alignments: ['left', 'center', 'right', 'justify']
+      }),
+      Placeholder.configure({
+        placeholder: 'Start writing your article here...',
+        emptyEditorClass: 'is-editor-empty',
+        showOnlyWhenEditable: true,
+        showOnlyCurrent: false,
+      }),
+    ],
     content: formData.content,
     onUpdate: ({ editor }) => {
-      setFormData(prev => ({ ...prev, content: editor.getHTML() }));
-      analyzeContent(editor.getHTML());
+      const html = editor.getHTML();
+      setFormData(prev => ({ ...prev, content: html }));
+      analyzeContent(html);
     },
     editorProps: {
       attributes: {
-        style: `min-height:300px;outline:none;font-size:${editorState.fontSize}px;font-family:${editorState.fontFamily};line-height:${editorState.lineHeight};text-align:left;`,
-        spellCheck: 'true',
-        dir: 'ltr',
+        class: 'prose prose-lg max-w-none focus:outline-none tiptap-custom-editor',
+        style: `
+          min-height: 300px;
+          padding: 1rem 2rem;
+          font-size: ${editorState.fontSize}px;
+          font-family: ${editorState.fontFamily};
+          line-height: ${editorState.lineHeight};
+        `,
+        spellcheck: 'true',
       },
     },
   });
@@ -83,7 +151,6 @@ const SubmitArticlePage = () => {
     const avgWordsPerSentence = words.length / (sentences.length || 1);
     const avgSyllablesPerWord = words.reduce((acc, word) => acc + countSyllables(word), 0) / (words.length || 1);
     const readabilityScore = Math.max(0, Math.min(100, 206.835 - (1.015 * avgWordsPerSentence) - (84.6 * avgSyllablesPerWord)));
-    // Remove metaDescription and tags from SEO score
     const seoScore = Math.min(100,
       (formData.title.length >= 30 && formData.title.length <= 60 ? 20 : 5) +
       (formData.category ? 10 : 0) +
@@ -120,84 +187,265 @@ const SubmitArticlePage = () => {
     setAiSuggestions(suggestions);
   };
 
+  const performAutoSave = useCallback(async () => {
+    if (formData.title.trim() || formData.content.trim()) {
+      try {
+        await submitArticle(formData, articleId, true); // Pass articleId here
+        setLastSaved(new Date());
+        showSnackbar('Auto-saved as draft', 'success');
+      } catch (error) {
+        console.error('Auto-save failed:', error);
+        showSnackbar('Auto-save failed', 'warning');
+      }
+    }
+  }, [formData, articleId]);
+
   // Auto-save
   useEffect(() => {
-    if (editorState.enableAutoSave) {
-      autoSaveRef.current = setInterval(() => {
-        if (formData.title || formData.content) showSnackbar('Auto-saved', 'success');
-      }, editorState.saveInterval);
+    if (editorState.enableAutoSave && (formData.title.trim() || formData.content.trim())) {
+      // Clear existing interval
+      if (autoSaveRef.current) {
+        clearInterval(autoSaveRef.current);
+      }
+      
+      // Set new interval
+      autoSaveRef.current = setInterval(performAutoSave, editorState.saveInterval);
+    } else if (autoSaveRef.current) {
+      clearInterval(autoSaveRef.current);
     }
-    return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
-  }, [editorState.enableAutoSave, editorState.saveInterval, formData.title, formData.content]);
+
+    return () => {
+      if (autoSaveRef.current) {
+        clearInterval(autoSaveRef.current);
+      }
+    };
+  }, [editorState.enableAutoSave, editorState.saveInterval, performAutoSave]);
 
   // Snackbar
   const showSnackbar = (message, severity = 'info') => setUi(prev => ({ ...prev, snackbarOpen: true, snackbarMessage: message, snackbarSeverity: severity }));
 
-  // Toolbar actions using Tiptap
+  // Improved toolbar actions - preserve selection and don't auto-clear
   const formatActions = [
-    { icon: FormatBold, label: 'Bold', action: () => tiptapEditor && tiptapEditor.chain().focus().toggleBold().run(), shortcut: 'Ctrl+B' },
-    { icon: FormatItalic, label: 'Italic', action: () => tiptapEditor && tiptapEditor.chain().focus().toggleItalic().run(), shortcut: 'Ctrl+I' },
-    { icon: FormatUnderlined, label: 'Underline', action: () => tiptapEditor && tiptapEditor.chain().focus().toggleUnderline && tiptapEditor.chain().focus().toggleUnderline().run(), shortcut: 'Ctrl+U' },
-    { icon: FormatListBulleted, label: 'Bullet List', action: () => tiptapEditor && tiptapEditor.chain().focus().toggleBulletList().run() },
-    { icon: FormatListNumbered, label: 'Numbered List', action: () => tiptapEditor && tiptapEditor.chain().focus().toggleOrderedList && tiptapEditor.chain().focus().toggleOrderedList().run() },
-    { icon: LinkIcon, label: 'Insert Link', action: () => {
-      const url = prompt('Enter URL:');
-      if (url && tiptapEditor) tiptapEditor.chain().focus().setLink({ href: url }).run();
-    }},
-    { icon: FormatAlignLeft, label: 'Align Left', action: () => tiptapEditor && tiptapEditor.chain().focus().setTextAlign('left').run() },
-    { icon: FormatAlignCenter, label: 'Align Center', action: () => tiptapEditor && tiptapEditor.chain().focus().setTextAlign('center').run() },
-    { icon: FormatAlignRight, label: 'Align Right', action: () => tiptapEditor && tiptapEditor.chain().focus().setTextAlign('right').run() },
-    { icon: FormatAlignJustify, label: 'Justify', action: () => tiptapEditor && tiptapEditor.chain().focus().setTextAlign('justify').run() },
+    { 
+      icon: FormatBold, 
+      label: 'Bold', 
+      action: () => {
+        if (!editor) return;
+        editor.chain().focus().toggleBold().run();
+      }, 
+      shortcut: 'Ctrl+B',
+      isActive: editor?.isActive('bold')
+    },
+    { 
+      icon: FormatItalic, 
+      label: 'Italic', 
+      action: () => {
+        if (!editor) return;
+        editor.chain().focus().toggleItalic().run();
+      }, 
+      shortcut: 'Ctrl+I',
+      isActive: editor?.isActive('italic')
+    },
+    { 
+      icon: FormatUnderlined, 
+      label: 'Underline', 
+      action: () => {
+        if (!editor) return;
+        editor.chain().focus().toggleUnderline().run();
+      }, 
+      shortcut: 'Ctrl+U',
+      isActive: editor?.isActive('underline')
+    },
+    { 
+      icon: FormatListBulleted, 
+      label: 'Bullet List', 
+      action: () => {
+        if (!editor) return;
+        editor.chain().focus().toggleBulletList().run();
+      },
+      isActive: editor?.isActive('bulletList')
+    },
+    { 
+      icon: FormatListNumbered, 
+      label: 'Numbered List', 
+      action: () => {
+        if (!editor) return;
+        editor.chain().focus().toggleOrderedList().run();
+      },
+      isActive: editor?.isActive('orderedList')
+    },
+    { 
+      icon: LinkIcon, 
+      label: 'Insert Link', 
+      action: () => {
+        if (!editor) return;
+        const isSelection = !editor.state.selection.empty;
+        if (!isSelection) {
+          showSnackbar('Select some text first', 'warning');
+          return;
+        }
+        // Store the current selection
+        const previousUrl = editor.getAttributes('link').href;
+        setLinkUrl(previousUrl || '');
+        setLinkDialogOpen(true);
+      },
+      isActive: editor?.isActive('link'),
+      isDisabled: editor ? editor.state.selection.empty : true
+    },
+    { 
+      icon: FormatAlignLeft, 
+      label: 'Align Left', 
+      action: () => {
+        if (!editor) return;
+        editor.chain().focus().setTextAlign('left').run();
+      },
+      isActive: editor?.isActive({ textAlign: 'left' })
+    },
+    { 
+      icon: FormatAlignCenter, 
+      label: 'Align Center', 
+      action: () => {
+        if (!editor) return;
+        editor.chain().focus().setTextAlign('center').run();
+      },
+      isActive: editor?.isActive({ textAlign: 'center' })
+    },
+    { 
+      icon: FormatAlignRight, 
+      label: 'Align Right', 
+      action: () => {
+        if (!editor) return;
+        editor.chain().focus().setTextAlign('right').run();
+      },
+      isActive: editor?.isActive({ textAlign: 'right' })
+    },
+    { 
+      icon: FormatAlignJustify, 
+      label: 'Justify', 
+      action: () => {
+        if (!editor) return;
+        editor.chain().focus().setTextAlign('justify').run();
+      },
+      isActive: editor?.isActive({ textAlign: 'justify' })
+    },
   ];
 
-  // Save draft, publish
-  const handleSaveDraft = () => showSnackbar('Draft saved', 'success');
-  const handlePublish = async () => {
-    const errors = [];
-    if (!formData.title) errors.push('Title required');
-    if (!formData.content) errors.push('Content required');
-    if (!formData.category) errors.push('Category required');
-    if (errors.length > 0) { showSnackbar(errors.join(', '), 'error'); return; }
-    setStatus({ message: 'Publishing...', type: 'info', progress: 0 });
-    for (const step of [
-      { message: 'Validating...', progress: 20 },
-      { message: 'Optimizing...', progress: 40 },
-      { message: 'Generating SEO...', progress: 60 },
-      { message: 'Preparing preview...', progress: 80 },
-      { message: 'Publishing...', progress: 100 }
-    ]) {
-      await new Promise(res => setTimeout(res, 500));
-      setStatus({ message: step.message, type: 'info', progress: step.progress });
+  // Save draft function
+  const handleSaveDraft = async () => {
+    if (isSubmitting) return;
+    
+    setIsSubmitting(true);
+    setStatus({ message: 'Saving draft...', type: 'info', progress: 50 });
+
+    try {
+
+      const result = await submitArticle(formData, articleId, true);
+
+      // Update article ID if this was a new draft
+      if (result.article_id) {
+        setArticleId(Number(result.article_id));
+      }
+
+      setLastSaved(new Date());
+      setStatus({ message: 'Draft saved successfully!', type: 'success', progress: 100 });
+      showSnackbar('Draft saved successfully!', 'success');
+      
+    } catch (error) {
+      setStatus({ message: 'Failed to save draft', type: 'error', progress: 0 });
+      showSnackbar(`Failed to save draft: ${error.message}`, 'error');
+    } finally {
+      setTimeout(() => {
+        setStatus({ message: '', type: '', progress: 0 });
+      }, 3000);
+      setIsSubmitting(false);
     }
-    setStatus({ message: 'Article published!', type: 'success', progress: 100 });
-    showSnackbar('Article published!', 'success');
-    setTimeout(() => setStatus({ message: '', type: '', progress: 0 }), 2000);
   };
 
-  // Tag management
-  const handleAddTag = () => {
-    if (newTag.trim() && !formData.tags.includes(newTag.trim())) setFormData(prev => ({ ...prev, tags: [...prev.tags, newTag.trim()] })); setNewTag('');
-  };
-  const handleRemoveTag = (tagToRemove) => setFormData(prev => ({ ...prev, tags: prev.tags.filter(tag => tag !== tagToRemove) }));
+  // Publish function
+  const handlePublish = async () => {
+  if (isSubmitting) return;
+
+  // Validation
+  const errors = [];
+  if (!formData.title.trim()) errors.push('Title is required');
+  if (!formData.content.trim()) errors.push('Content is required');
+  if (stats.wordCount < 50) errors.push('Article must be at least 50 words');
+  
+  if (errors.length > 0) { 
+    showSnackbar(errors.join(', '), 'error'); 
+    return; 
+  }
+
+  setIsSubmitting(true);
+  
+  try {
+    // Convert articleId to number (handle -1 case)
+    const submissionId = articleId === -1 ? undefined : Number(articleId);
+    
+    const result = await submitArticle(formData, submissionId, false);
+
+    // Update article ID if this was a new submission
+    if (articleId === -1 && result.article_id) {
+      setArticleId(Number(result.article_id));
+    }
+
+    showSnackbar(
+      articleId === -1 
+        ? 'Article published successfully!' 
+        : 'Article updated successfully!',
+      'success'
+    );
+
+    // Clear form only for new submissions
+    if (articleId === -1) {
+      setFormData({ title: '', subtitle: '', content: '' });
+      if (editor) editor.commands.setContent('');
+    }
+    
+  } catch (error) {
+    console.error('Publish error:', error);
+    showSnackbar(
+      `Publish failed: ${error.response?.data?.error || error.message || 'Unknown error'}`,
+      'error'
+    );
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
 
   // Fullscreen
   const toggleFullscreen = () => setEditorState(prev => ({ ...prev, isFullscreen: !prev.isFullscreen }));
 
-  // Keyboard shortcuts for Tiptap formatting
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && tiptapEditor) {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && editor) {
         switch (e.key.toLowerCase()) {
-          case 'b': tiptapEditor.chain().focus().toggleBold().run(); e.preventDefault(); break;
-          case 'i': tiptapEditor.chain().focus().toggleItalic().run(); e.preventDefault(); break;
-          // Underline is not in StarterKit by default
-          default: break;
+          case 'b': 
+            e.preventDefault();
+            editor.chain().focus().toggleBold().run();
+            break;
+          case 'i': 
+            e.preventDefault();
+            editor.chain().focus().toggleItalic().run();
+            break;
+          case 'u': 
+            e.preventDefault();
+            editor.chain().focus().toggleUnderline().run();
+            break;
+          case 's':
+            e.preventDefault();
+            handleSaveDraft();
+            break;
+          default: 
+            break;
         }
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [tiptapEditor]);
+  }, [editor, handleSaveDraft]);
 
   // Color helpers
   const getColor = (score) => {
@@ -225,14 +473,73 @@ const SubmitArticlePage = () => {
         height: HEADER_HEIGHT,
         display: 'flex', alignItems: 'center', px: 4
       }}>
-        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 2 }}>
-          <SmartToy color="primary" sx={{ fontSize: 32, mr: 1 }} />
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>Submit Article</Typography>
+        <Box sx={{ 
+          flex: 1, 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 2,
+          height: HEADER_HEIGHT // Ensure the box takes full header height
+        }}>
+          <Typography 
+            variant="h4"
+            sx={{ 
+              fontWeight: 800,
+              background: theme => `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+              backgroundClip: 'text',
+              WebkitBackgroundClip: 'text',
+              color: 'transparent',
+              letterSpacing: '-0.5px',
+              fontSize: '2rem', // Explicitly set font size
+              display: 'block', // Change to block
+              lineHeight: 1, // Keep line height tight
+              transform: 'translateY(5px)', // Fine-tune vertical position
+            }}
+          >
+            Cognara
+          </Typography>
+          {lastSaved && (
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+              Last saved: {lastSaved.toLocaleTimeString()}
+            </Typography>
+          )}
         </Box>
         <Stack direction="row" spacing={2} alignItems="center">
-          <Button variant="outlined" startIcon={<SaveIcon />} size="small" onClick={handleSaveDraft} sx={{ borderRadius: 2 }}>Save Draft</Button>
-          <Button variant="outlined" startIcon={<PreviewIcon />} size="small" onClick={() => setUi(prev => ({ ...prev, previewMode: !prev.previewMode }))} sx={{ borderRadius: 2 }}>{ui.previewMode ? 'Exit Preview' : 'Preview'}</Button>
-          <Button variant="contained" startIcon={<PublishIcon />} size="small" onClick={handlePublish} sx={{ borderRadius: 2 }}>Publish</Button>
+            <MenuItem onClick={() => {
+              handleThemeToggle();
+            }}>
+              <ListItemIcon>
+                {isDarkMode ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+              </ListItemIcon>
+            </MenuItem>
+          <Button 
+            variant="outlined" 
+            startIcon={<SaveIcon />} 
+            size="small" 
+            onClick={handleSaveDraft} 
+            disabled={isSubmitting}
+            sx={{ borderRadius: 2 }}
+          >
+            {isSubmitting ? 'Saving...' : 'Save Draft'}
+          </Button>
+          <Button 
+            variant="outlined" 
+            startIcon={<PreviewIcon />} 
+            size="small" 
+            onClick={() => setUi(prev => ({ ...prev, previewMode: !prev.previewMode }))} 
+            sx={{ borderRadius: 2 }}
+          >
+            {ui.previewMode ? 'Exit Preview' : 'Preview'}
+          </Button>
+          <Button 
+            variant="contained" 
+            startIcon={<PublishIcon />} 
+            size="small" 
+            onClick={handlePublish}
+            disabled={isSubmitting}
+            sx={{ borderRadius: 2 }}
+          >
+            {isSubmitting ? 'Publishing...' : 'Publish'}
+          </Button>
           <IconButton onClick={() => setUi(prev => ({ ...prev, settingsOpen: true }))}><SettingsIcon /></IconButton>
           <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontWeight: 600 }}>{formData.author?.[0]?.toUpperCase() ?? 'U'}</Avatar>
         </Stack>
@@ -259,24 +566,67 @@ const SubmitArticlePage = () => {
             height: `calc(100vh - ${HEADER_HEIGHT}px)`,
             bgcolor: 'background.default',
             overflowY: 'auto',
-            // Hide scrollbar for all major browsers:
-            scrollbarWidth: 'none', // Firefox
-            msOverflowStyle: 'none', // IE 10+
-            '&::-webkit-scrollbar': { display: 'none' }, // Chrome/Safari/Webkit
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            '&::-webkit-scrollbar': { display: 'none' },
           }}
         >
           {/* Editor toolbar */}
           <Box sx={{ display: 'flex', alignItems: 'center', py: 1, px: 3, borderBottom: t => `1px solid ${t.palette.divider}`, gap: 1 }}>
             {formatActions.map((item, index) => (
               <Tooltip key={index} title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}>
-                <IconButton size="small" onClick={item.action} disabled={!tiptapEditor}><item.icon fontSize="small" /></IconButton>
+                <IconButton 
+                  size="small" 
+                  onClick={item.action} 
+                  // Update the disabled prop to include item.isDisabled
+                  disabled={!editor || item.isDisabled}
+                  sx={{
+                    color: item.isActive ? 'primary.main' : 'text.primary',
+                    bgcolor: item.isActive ? 'primary.lighter' : 'transparent',
+                    border: t => item.isActive ? `1px solid ${t.palette.primary.main}` : 'none',
+                    '&:hover': {
+                      bgcolor: t => item.isActive 
+                        ? alpha(t.palette.primary.main, 0.15)
+                        : alpha(t.palette.action.hover, 0.08),
+                    },
+                    '&:disabled': {
+                      color: 'action.disabled',
+                      bgcolor: 'transparent',
+                    },
+                    transition: t => t.transitions.create(['background-color', 'color', 'border'], {
+                      duration: t.transitions.duration.shorter
+                    }),
+                  }}
+                >
+                  <item.icon fontSize="small" />
+                </IconButton>
               </Tooltip>
             ))}
             <Divider orientation="vertical" flexItem sx={{ mx: 1, height: 28 }} />
-            <Tooltip title="Undo"><IconButton size="small" onClick={() => tiptapEditor && tiptapEditor.chain().focus().undo().run()} disabled={!tiptapEditor}><Undo /></IconButton></Tooltip>
-            <Tooltip title="Redo"><IconButton size="small" onClick={() => tiptapEditor && tiptapEditor.chain().focus().redo().run()} disabled={!tiptapEditor}><Redo /></IconButton></Tooltip>
+            <Tooltip title="Undo">
+              <IconButton 
+                size="small" 
+                onClick={() => editor && editor.chain().focus().undo().run()} 
+                disabled={!editor || !editor.can().undo()}
+              >
+                <Undo />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Redo">
+              <IconButton 
+                size="small" 
+                onClick={() => editor && editor.chain().focus().redo().run()} 
+                disabled={!editor || !editor.can().redo()}
+              >
+                <Redo />
+              </IconButton>
+            </Tooltip>
             <Box sx={{ flexGrow: 1 }} />
-            <Tooltip title="Toggle Fullscreen"><IconButton size="small" onClick={toggleFullscreen}>{editorState.isFullscreen ? <FullscreenExit /> : <Fullscreen />}</IconButton></Tooltip>
+            <Tooltip title="Toggle Fullscreen">
+              <IconButton size="small" onClick={toggleFullscreen}>
+                {editorState.isFullscreen ? <FullscreenExit /> : <Fullscreen />}
+              </IconButton>
+            </Tooltip>
           </Box>
 
           {/* Editor body */}
@@ -305,38 +655,38 @@ const SubmitArticlePage = () => {
                   sx: { fontSize: '1.25rem', color: 'text.secondary', mt: 1 }
                 }} sx={{ mb: 2 }}
               />
-              <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-                <FormControl sx={{ minWidth: 180 }}>
-                  <InputLabel id="cat-label"><Category sx={{ mr: 1 }} fontSize="small" />Category</InputLabel>
-                  <Select
-                    labelId="cat-label"
-                    value={formData.category}
-                    onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                    label="Category"
-                    size="small"
-                  >
-                    {categoriesList.map(cat =>
-                      <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-                    )}
-                  </Select>
-                </FormControl>
-              </Stack>
             </Box>
             <Divider sx={{ mb: 0 }} />
 
-            {/* Actual content editor - Tiptap */}
-            {/* Tiptap Editor Content */}
-            {tiptapEditor && <TiptapEditor
-              content={formData.content}
-              onChange={html => {
-                setFormData(prev => ({ ...prev, content: html }));
-                analyzeContent(html);
-              }}
-              fontSize={editorState.fontSize}
-              fontFamily={editorState.fontFamily}
-              lineHeight={editorState.lineHeight}
-              editor={tiptapEditor}
-            />}
+            {/* Tiptap Editor */}
+            <Box sx={{ 
+              flex: 1, 
+              position: 'relative',
+              '& .tiptap-custom-editor': {
+                outline: 'none',
+                minHeight: '400px',
+                bgcolor: 'background.default',
+                color: theme.palette.text.primary,
+                fontFamily: theme.typography.fontFamily,
+                '&.is-editor-empty::before': {
+                  // Use the placeholder text from the data-placeholder attribute
+                  content: 'attr(data-placeholder)',
+                  color: theme.palette.text.secondary,
+                  opacity: 0.6,
+                  fontStyle: 'italic',
+                  pointerEvents: 'none',
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  padding: '1rem 2rem',
+                  width: '100%',
+                  display: 'block',
+                  whiteSpace: 'pre-line',
+                },
+              },
+            }}>
+              {editor && <EditorContent editor={editor} />}
+            </Box>
           </Box>
         </Box>
 
@@ -351,9 +701,9 @@ const SubmitArticlePage = () => {
           position: 'relative',
           bgcolor: 'background.paper',
           overflowY: 'auto',
-          scrollbarWidth: 'none', // Firefox
-          msOverflowStyle: 'none', // IE 10+
-          '&::-webkit-scrollbar': { display: 'none' }, // Chrome/Safari/Webkit
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          '&::-webkit-scrollbar': { display: 'none' },
         }}>
           <Box sx={{ p: 4, pb: 1 }}>
             {/* Overall Score */}
@@ -454,6 +804,97 @@ const SubmitArticlePage = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Link Dialog */}
+      <Dialog 
+        open={linkDialogOpen} 
+        onClose={() => setLinkDialogOpen(false)}
+        PaperProps={{
+          sx: { 
+            borderRadius: 2,
+            width: '100%',
+            maxWidth: '400px',
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          pb: 1,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1
+        }}>
+          <LinkIcon color="primary" />
+          Insert Link
+        </DialogTitle>
+        <DialogContent sx={{ pt: '8px !important' }}>
+          <TextField
+            autoFocus
+            fullWidth
+            placeholder="https://example.com"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <LinkIcon color="action" />
+                </InputAdornment>
+              ),
+              endAdornment: linkUrl && (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setLinkUrl('')}
+                    edge="end"
+                    size="small"
+                  >
+                    <Close fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button 
+            onClick={() => {
+              setLinkDialogOpen(false);
+              setLinkUrl('');
+            }} 
+            color="inherit"
+          >
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            onClick={() => {
+              editor.chain().focus().extendMarkRange('link').unsetLink().run();
+              setLinkDialogOpen(false);
+              setLinkUrl('');
+            }}
+            disabled={!editor || !editor.isActive('link')}
+          >
+            Remove Link
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              if (linkUrl && editor) {
+                // Only apply to the current selection
+                editor
+                  .chain()
+                  .focus()
+                  .setLink({ href: linkUrl })
+                  .run();
+              }
+              setLinkDialogOpen(false);
+              setLinkUrl('');
+            }}
+            disabled={!editor || !linkUrl}
+          >
+            Apply
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Status Alert */}
       {status.message && (
         <Box sx={{ position: 'fixed', top: 90, right: 20, zIndex: 1300, minWidth: 300 }}>
@@ -461,8 +902,8 @@ const SubmitArticlePage = () => {
             severity={status.type}
             icon={
               status.type === 'success' ? <CheckCircle /> :
-                status.type === 'error' ? <Error /> :
-                  status.type === 'warning' ? <Warning /> : <Info />
+              status.type === 'error' ? <Error /> :
+              status.type === 'warning' ? <Warning /> : <Info />
             }
             action={
               <IconButton

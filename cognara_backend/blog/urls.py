@@ -19,4 +19,5 @@ urlpatterns = [
     path('forgetpass', views.forgetpass, name="forgetpass"),
     path('newsletter/subscribe', views.newsletter_subscription, name="newsletter_subscription"),
     path("get-article-images", views.get_article_images ,name="get_article_images"),
+    path("submit", views.submit ,name="submit"),
 ]

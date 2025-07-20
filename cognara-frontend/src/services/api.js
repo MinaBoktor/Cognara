@@ -60,6 +60,27 @@ export const articlesAPI = {
     }
   },
   getImages: (articleId) => apiClient.post('get-article-images', { article_id: articleId }),
+  submit: async (articleData, articleId = -1, isDraft = false) => {
+    try {
+      await fetchCSRFToken();
+      
+      // Prepare the payload with explicit type conversion
+      const payload = {
+        article_id: articleId !== -1 ? Number(articleId) : null, // Explicit null for new articles
+        title: articleData.title,
+        subtitle: articleData.subtitle,
+        content: articleData.content,
+        status: isDraft ? 'draft' : 'published',
+        is_draft: isDraft // Additional boolean flag if needed
+      };
+
+      const response = await apiClient.post('submit', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Submission error:', error);
+      throw error;
+    }
+  }
 };
 
 // Authentication API
@@ -192,4 +213,3 @@ export const getAuthStatus = async () => {
 
 // Export the configured axios instance for direct use if needed
 export default apiClient;
-

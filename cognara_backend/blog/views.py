@@ -1,6 +1,5 @@
 from django.http import JsonResponse
 from supabase import create_client
-from django.views.decorators.http import require_GET
 from rest_framework.response import Response
 
 from rest_framework import status
@@ -136,6 +135,9 @@ def post_comment(request):
     except Exception as e:
         print(f"Error in post_comment: {e}")
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
 
 
 @require_frontend_token
@@ -378,6 +380,7 @@ def login(request):
             
             request.session['id'] = user_data[0]['id']
             request.session['email'] = user_data[0]['email']
+            request.session['username'] = user_data[0]['username']
             request.session['first_name'] = user_data[0]['first_name']
             request.session['last_name'] = user_data[0]['last_name']
             request.session['bio'] = user_data[0]['bio']
@@ -388,6 +391,58 @@ def login(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+
+@require_frontend_token
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def submit(request):
+    try:
+        article_id = request.data.get('article_id')  # None if not provided
+        title = request.data.get('title')
+        subtitle = request.data.get('subtitle')
+        content = request.data.get('content')
+        status = request.data.get('status')  # This should be a string
+
+        if user_unique(request.session.get('username')):
+            return JsonResponse({'error': 'User not found'}, status=400)
+
+        data = {
+            "title": title,
+            "slug": subtitle,
+            "content": content,
+            "author_id": request.session.get('id'),
+            "status": status,
+        }
+        print(article_id)
+
+        if article_id:
+            response = supabase.table('articles').select('*').eq('id', article_id).execute()
+            if not response.data:
+                response = supabase.table('articles').insert(data).execute()
+                message = 'Article created successfully'
+            else:
+                response = supabase.table('articles').update(data).eq('id', article_id).execute()
+                message = 'Article updated successfully'
+        else:
+            response = supabase.table('articles').insert(data).execute()
+            message = 'Article created successfully'
+
+
+        if not response.data:
+            return JsonResponse({'error': 'Database operation failed'}, status=500)
+
+            
+
+        return JsonResponse({
+            'success': True,
+            'message': message,
+            'article_id': response.data[0]['id'],
+            'data': response.data[0]
+        }, status=201)
+        
+    except Exception as e:
+        print(e)
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 
