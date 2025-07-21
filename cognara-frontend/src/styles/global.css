@@ -95,3 +95,23 @@ a:hover {
   }
 }
 
+/* Add this to your global styles */
+.ProseMirror {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.ProseMirror > * {
+  max-width: 100%;
+}
+
+.ProseMirror p {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.ProseMirror pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

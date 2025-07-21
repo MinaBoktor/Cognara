@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link as RouterLink } from 'react-router-dom';
 import { articlesAPI } from '../services/api';
-import { useAuth } from '../context/AuthContext'; // 1. Import useAuth
-import ReactMarkdown from 'react-markdown';
+import { useAuth } from '../context/AuthContext';
+import DOMPurify from 'dompurify';
+
 import {
   Container,
   Typography,
@@ -19,22 +20,21 @@ import {
   ListItemText,
   TextField,
   useTheme,
-  Paper // Import Paper for the login prompt
+  Paper
 } from '@mui/material';
 import { Helmet } from 'react-helmet';
 import { format } from 'date-fns';
 import { styled } from '@mui/material/styles';
 
-// Enhanced container with optimized content width
-const ArticleContainer = styled(Container)(({ theme }) => ({
+// FIX: Add 'export' to each styled component
+export const ArticleContainer = styled(Container)(({ theme }) => ({
   maxWidth: '1200px',
   paddingTop: theme.spacing(6),
   paddingBottom: theme.spacing(8),
   marginTop: theme.spacing(8),
 }));
 
-// Main content column optimized for reading
-const MainContent = styled(Box)(({ theme }) => ({
+export const MainContent = styled(Box)(({ theme }) => ({
   maxWidth: '680px',
   margin: '0 auto',
   [theme.breakpoints.up('lg')]: {
@@ -47,7 +47,6 @@ const MainContent = styled(Box)(({ theme }) => ({
   },
 }));
 
-// Enhanced floating image with better mobile handling
 const FloatingImage = styled('img')(({ theme }) => ({
   float: 'right',
   width: '320px',
@@ -73,15 +72,13 @@ const FloatingImage = styled('img')(({ theme }) => ({
   },
 }));
 
-// Enhanced article header with improved spacing
-const ArticleHeader = styled(Box)(({ theme }) => ({
+export const ArticleHeader = styled(Box)(({ theme }) => ({
   marginBottom: theme.spacing(6),
   paddingBottom: theme.spacing(4),
   borderBottom: `1px solid ${theme.palette.divider}`,
 }));
 
-// Enhanced title with optimal readability
-const ArticleTitle = styled(Typography)(({ theme }) => ({
+export const ArticleTitle = styled(Typography)(({ theme }) => ({
   fontWeight: 700,
   marginBottom: theme.spacing(4),
   fontSize: '2.25rem',
@@ -98,8 +95,7 @@ const ArticleTitle = styled(Typography)(({ theme }) => ({
   },
 }));
 
-// Enhanced metadata section
-const MetadataSection = styled(Box)(({ theme }) => ({
+export const MetadataSection = styled(Box)(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
   flexWrap: 'wrap',
@@ -108,8 +104,7 @@ const MetadataSection = styled(Box)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-// Enhanced content section with optimal readability
-const ContentSection = styled(Box)(({ theme }) => ({
+export const ContentSection = styled(Box)(({ theme }) => ({
   '& img': {
     maxWidth: '100%',
     height: 'auto',
@@ -129,7 +124,7 @@ const ContentSection = styled(Box)(({ theme }) => ({
 
 const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
   const { id } = useParams();
-  const { user } = useAuth(); // 2. Get the user from the Auth context
+  const { user } = useAuth();
   const [article, setArticle] = useState(null);
   const [articleImage, setArticleImage] = useState(null);
   const [comments, setComments] = useState([]);
@@ -198,7 +193,7 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
         setCommentsCount(commentsResponse.data.count || 0);
         setNewComment('');
       }
-    } catch (err) {
+    } catch (err) { // FIX: The period has been removed from this line
       console.error('Comment submission error:', err);
 
       if (err.response?.status === 403 || err.response?.status === 401) {
@@ -290,9 +285,12 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
             )}
           </ArticleHeader>
 
-          <ContentSection>
-            <ReactMarkdown>{article.content}</ReactMarkdown>
-          </ContentSection>
+          <ContentSection
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(article.content || '<p>No content available.</p>')
+            }}
+          />
+
 
           <Box sx={{
             marginTop: theme.spacing(8),
@@ -389,8 +387,7 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
                 ))
               )}
             </List>
-
-            {/* 3. Conditionally render the comment form or a login prompt */}
+            
             {user ? (
               <Box
                 component="form"

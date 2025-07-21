@@ -19,5 +19,7 @@ urlpatterns = [
     path('forgetpass', views.forgetpass, name="forgetpass"),
     path('newsletter/subscribe', views.newsletter_subscription, name="newsletter_subscription"),
     path("get-article-images", views.get_article_images ,name="get_article_images"),
+    path("upload-article-image/<int:article_id>", views.upload_article_image, name="upload_article_image"),
     path("submit", views.submit ,name="submit"),
+    path('delete-article-image/<int:article_id>', views.delete_article_image, name='delete_article_image'),
 ]

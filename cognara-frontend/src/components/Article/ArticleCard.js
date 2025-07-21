@@ -22,6 +22,14 @@ const ArticleCard = ({ article }) => {
 
   const capitalize = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
 
+  // Function to strip HTML tags and return plain text
+  const stripHtml = (html) => {
+    if (!html) return '';
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    return tempDiv.textContent || tempDiv.innerText || '';
+  };
+
   // Adapted to new backend structure
   const authorFirst = capitalize(article?.author_first_name || '');
   const authorLast = capitalize(article?.author_last_name || '');
@@ -30,11 +38,22 @@ const ArticleCard = ({ article }) => {
 
   const publishDate = article?.created_at ? new Date(article.created_at) : new Date();
   const titleLength = (article.title || '').length;
-  const fontSize = titleLength > 60 ? '0.95rem' : titleLength > 40 ? '1.05rem' : '1.15rem';
+  // More flexible font sizing based on title length (always 2 lines max)
+  const getFontSize = (length) => {
+    if (length > 100) return '0.75rem';
+    if (length > 80) return '0.8rem';
+    if (length > 60) return '0.85rem';
+    if (length > 40) return '0.95rem';
+    if (length > 25) return '1.05rem';
+    return '1.15rem';
+  };
+  
+  const fontSize = getFontSize(titleLength);
   const hasImage = Boolean(imageUrl);
-  const maxExcerptLines = hasImage ? 2 : 9;
+  const maxExcerptLines = hasImage ? 2 : 6;
 
-
+  // Get plain text content
+  const plainTextContent = stripHtml(article.excerpt || article.content?.substring(0, 300) || 'No content');
 
   useEffect(() => {
     if (article?.id) {
@@ -54,8 +73,8 @@ const ArticleCard = ({ article }) => {
   return (
     <Card
       sx={{
-        width: '100%', // 👈 Controlled by the Grid container
-        maxWidth: 340, // 👈 Optional: limit width per card
+        width: '100%',
+        maxWidth: 340,
         height: 400,
         display: 'flex',
         flexDirection: 'column',
@@ -110,23 +129,23 @@ const ArticleCard = ({ article }) => {
           </Typography>
 
           <Typography
-            variant="body2"
-            color="text.secondary"
             sx={{
               lineHeight: 1.6,
-              display: '-webkit-box',
-              WebkitLineClamp: maxExcerptLines,
-              WebkitBoxOrient: 'vertical',
+              fontSize: '0.875rem',
+              color: theme.palette.text.secondary,
               overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: maxExcerptLines,
               mb: 2
             }}
           >
-            {article.excerpt || article.content?.substring(0, 300) || 'No content'}...
+            {plainTextContent}
           </Typography>
         </Box>
 
         {/* Author + Time */}
-        <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Avatar
             sx={{
               width: 36,
@@ -142,7 +161,7 @@ const ArticleCard = ({ article }) => {
           <Box>
             <Typography
               variant="caption"
-              sx={{ fontWeight: 600, mr: 1 }} // 👈 adds spacing
+              sx={{ fontWeight: 600, mr: 1 }}
             >
               {authorName}
             </Typography>

@@ -111,15 +111,7 @@ def get_user(id):
     return user.data[0]
 
 
-def upload_article_image(article_id, file_obj, filename):
-    storage_path = f"{article_id}/{filename}"
 
-    # Upload to storage bucket
-    response = supabase.storage.from_('article-photos').upload(storage_path, file_obj)
-    if response.get("error"):
-        raise Exception("Upload failed: " + str(response["error"]))
-
-    return storage_path
 
 
 subjects = {"confirmation": "Your Cognara Confirmation Code"

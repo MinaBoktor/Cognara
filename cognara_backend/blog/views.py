@@ -101,40 +101,7 @@ def get_comments(request, article_id):
 
 
 
-@csrf_exempt
-@api_view(['POST'])
-@permission_classes([AllowAny])
-@require_session_login
-@require_frontend_token
-def post_comment(request):
-    print("POST COMMENT VIEW CALLED")
-    try:
-        comment = request.data.get('comment')
-        article_id = request.data.get('article_id')
-        user_id = request.session.get('id')
-        
-        print(f"Comment: {comment}, Article ID: {article_id}, User ID: {user_id}")
-        
-        if not comment or not article_id:
-            return Response({'error': 'Comment and Article ID are required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = get_user(user_id)
-        if not user:
-            return Response({'error': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
-
-        data = {
-            'content': comment,
-            'user_id': user_id,
-            'article_id': article_id
-        }
-
-        response = supabase.table('comments').insert(data).execute()
-        
-        return Response({'status': 'success'}, status=status.HTTP_201_CREATED)
-
-    except Exception as e:
-        print(f"Error in post_comment: {e}")
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -399,7 +366,6 @@ def submit(request):
     try:
         article_id = request.data.get('article_id')  # None if not provided
         title = request.data.get('title')
-        subtitle = request.data.get('subtitle')
         content = request.data.get('content')
         status = request.data.get('status')  # This should be a string
 
@@ -408,12 +374,10 @@ def submit(request):
 
         data = {
             "title": title,
-            "slug": subtitle,
             "content": content,
             "author_id": request.session.get('id'),
             "status": status,
         }
-        print(article_id)
 
         if article_id:
             response = supabase.table('articles').select('*').eq('id', article_id).execute()
@@ -602,3 +566,158 @@ def get_article_images(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+@require_frontend_token
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def post_comment(request):
+    print("POST COMMENT VIEW CALLED")
+    try:
+        comment = request.data.get('comment')
+        article_id = request.data.get('article_id')
+        user_id = request.session.get('id')
+        
+        print(f"Comment: {comment}, Article ID: {article_id}, User ID: {user_id}")
+        
+        if not comment or not article_id:
+            return Response({'error': 'Comment and Article ID are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = get_user(user_id)
+        if not user:
+            return Response({'error': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = {
+            'content': comment,
+            'user_id': user_id,
+            'article_id': article_id
+        }
+
+        response = supabase.table('comments').insert(data).execute()
+        
+        return Response({'status': 'success'}, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        print(f"Error in post_comment: {e}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@require_frontend_token
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def upload_article_image(request, article_id):
+    try:
+        if 'file' not in request.FILES:
+            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        file_obj = request.FILES['file']
+
+        if not file_obj.name:
+            return Response({"error": "File has no name"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # First, check if there are existing images for this article
+        try:
+            existing_images_response = supabase.table("article_photos").select("path").eq("article_id", article_id).execute()
+            existing_images = existing_images_response.data
+            
+            # Delete existing images from storage and database
+            if existing_images:
+                print(f"Found {len(existing_images)} existing images for article {article_id}")
+                
+                # Delete from storage
+                for image in existing_images:
+                    try:
+                        delete_res = supabase.storage.from_('article-photos').remove([image['path']])
+                        print(f"Deleted image from storage: {image['path']}")
+                    except Exception as delete_error:
+                        print(f"Warning: Failed to delete image from storage {image['path']}: {delete_error}")
+                        # Continue even if storage deletion fails
+                
+                # Delete from database
+                try:
+                    delete_db_res = supabase.table("article_photos").delete().eq("article_id", article_id).execute()
+                    print(f"Deleted {len(existing_images)} records from article_photos table")
+                except Exception as db_delete_error:
+                    print(f"Warning: Failed to delete from database: {db_delete_error}")
+                    # Continue even if database deletion fails
+                    
+        except Exception as cleanup_error:
+            print(f"Warning: Error during cleanup: {cleanup_error}")
+            # Continue with upload even if cleanup fails
+
+        # Now upload the new image
+        storage_path = f"{article_id}/{file_obj.name}"
+        file_content = file_obj.read()
+
+        # Upload to storage bucket - handle Supabase response properly
+        try:
+            # This is the corrected upload call
+            res = supabase.storage.from_('article-photos').upload(
+                path=storage_path,
+                file=file_content,
+                file_options={"content-type": file_obj.content_type}
+            )
+
+            public_url = supabase.storage.from_('article-photos').get_public_url(storage_path)
+
+            # Check for errors in the Supabase response
+            if hasattr(res, 'error') and res.error:
+                raise Exception(f"Upload failed: {res.error.message}")
+                
+        except Exception as upload_error:
+            raise Exception(f"Supabase upload error: {str(upload_error)}")
+
+        # Insert new record into article_photos table
+        data = {
+            "article_id": article_id,
+            "path": storage_path,
+        }
+
+        insert_res = supabase.table("article_photos").insert(data).execute()
+        
+        # Check for insert errors
+        if hasattr(insert_res, 'error') and insert_res.error:
+            raise Exception(f"Database insert failed: {insert_res.error}")
+
+        print(f"Successfully uploaded new image for article {article_id}: {storage_path}")
+
+        return Response({
+            "url": public_url,  # Return URL instead of path
+            "path": storage_path,
+            "message": f"Image uploaded successfully. Replaced {len(existing_images) if existing_images else 0} existing images."
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        print(f"Error in upload_article_image: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@require_frontend_token
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def delete_article_image(request, article_id):
+    try:
+        # First check if the article exists
+        article_response = supabase.table("articles").select("id").eq("id", article_id).execute()
+        if not article_response.data:
+            return Response({"error": "Article not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get all images for this article
+        images_response = supabase.table("article_photos").select("path").eq("article_id", article_id).execute()
+        if not images_response.data:
+            return Response({"error": "No images found for this article"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Delete all images from storage
+        paths_to_delete = [img['path'] for img in images_response.data]
+        delete_res = supabase.storage.from_('article-photos').remove(paths_to_delete)
+        
+        # Delete records from article_photos table
+        supabase.table("article_photos").delete().eq("article_id", article_id).execute()
+
+        return Response({
+            "message": f"Deleted {len(paths_to_delete)} images successfully",
+            "deleted_paths": paths_to_delete
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

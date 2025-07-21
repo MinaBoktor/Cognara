@@ -80,6 +80,77 @@ export const articlesAPI = {
       console.error('Submission error:', error);
       throw error;
     }
+  },
+  // Upload photo for article
+  uploadImage: async (articleId, file) => {
+      try {
+          // 1. Authentication check
+          const authStatus = await getAuthStatus();
+          if (!authStatus.authenticated) {
+            throw new Error('User not authenticated');
+          }
+          
+          // 2. Get CSRF token
+          await fetchCSRFToken();
+          
+          // 3. Prepare FormData
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          // 4. Create custom config that overrides the interceptor
+          const config = {
+            headers: {
+              'Content-Type': 'multipart/form-data', // Required for file uploads
+              'X-CSRFToken': getCookie('csrftoken'),
+              'App-Token': process.env.REACT_APP_API_TOKEN
+            },
+            transformRequest: (data) => data // Prevent axios from transforming FormData
+          };
+          
+          // 5. Use apiClient instead of raw axios
+          const response = await apiClient.post(
+            `upload-article-image/${articleId}`,
+            formData,
+            config
+          );
+          
+          return response.data;
+          
+        } catch (error) {
+          console.error('Image upload error:', {
+            error: error.message,
+            response: error.response?.data
+          });
+          
+          if (error.response?.status === 401) {
+            window.location.href = '/login';
+            return;
+          }
+          
+          throw new Error(error.response?.data?.error || 'Image upload failed');
+        }
+  },
+  // Add this to the articlesAPI object in api.js
+  deleteImage: async (articleId) => {
+    try {
+      const authStatus = await getAuthStatus();
+      if (!authStatus.authenticated) {
+        throw new Error('User not authenticated');
+      }
+      
+      await fetchCSRFToken();
+      
+      const response = await apiClient.post(`delete-article-image/${articleId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      
+      if (error.response?.status === 401) {
+        window.location.href = '/login';
+      }
+      
+      throw error;
+    }
   }
 };
 

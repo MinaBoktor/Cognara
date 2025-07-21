@@ -11,11 +11,17 @@ import Link from '@tiptap/extension-link';
 import TextAlign from '@tiptap/extension-text-align';
 import Placeholder from '@tiptap/extension-placeholder';
 import { articlesAPI } from '../services/api';
+import ArticlePreview from '../components/Article/ArticlePreview';
+import CircularProgress from '@mui/material/CircularProgress';
 import {
   Box, Button, TextField, Typography, Alert, IconButton, Tooltip, Divider,
   Stack, Snackbar, Avatar, Grid, LinearProgress, Switch, FormControlLabel, 
-  Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment, ListItemIcon, MenuItem,
+  Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment, ListItemIcon, MenuItem, Select, FormControl,
+  InputLabel,
+  Slider,
 } from '@mui/material';
+
+import { CloudUpload, Delete } from '@mui/icons-material';
 
 import {
   FormatBold, FormatItalic, FormatUnderlined, FormatListBulleted, FormatListNumbered, 
@@ -27,19 +33,97 @@ import {
 } from '@mui/icons-material';
 import { Brightness4 as DarkModeIcon, Brightness7 as LightModeIcon } from '@mui/icons-material';
 import { useTheme, alpha } from '@mui/material/styles';
+import {
+  ArticleContainer,
+  MainContent,
+  ArticleHeader,
+  ArticleTitle,
+  MetadataSection,
+  ContentSection
+} from './ArticlePage';
+
 
 const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
   const theme = useTheme();
   const HEADER_HEIGHT = 64;
-  const [formData, setFormData] = useState({
-    title: '', subtitle: '', content: '',
-    author: 'Current User'
-  });
   
-  const [editorState, setEditorState] = useState({
-    isFullscreen: false, fontSize: 18, lineHeight: 1.7, fontFamily: 'Inter', enableAutoSave: true, saveInterval: 30000
+  // Enhanced localStorage keys for different state pieces
+  const STORAGE_KEYS = {
+    DRAFT: 'draft_article',
+    EDITOR_STATE: 'editor_state_settings',
+    UI_STATE: 'ui_state_settings',
+    FORM_DATA: 'form_data_state',
+    ARTICLE_ID: 'current_article_id',
+    LAST_SAVED: 'last_saved_timestamp'
+  };
+
+  const FONT_OPTIONS = [
+    { value: 'Inter', label: 'Inter' },
+    { value: 'Roboto', label: 'Roboto' },
+    { value: 'Open Sans', label: 'Open Sans' },
+    { value: 'Merriweather', label: 'Merriweather' },
+    { value: 'Georgia', label: 'Georgia' },
+    { value: 'Times New Roman', label: 'Times New Roman' },
+  ];
+
+  const [articleImage, setArticleImage] = useState(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+
+  // Helper functions for localStorage management
+  const saveToStorage = (key, data) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (error) {
+      console.warn('Failed to save to localStorage:', error);
+    }
+  };
+
+  const loadFromStorage = (key, defaultValue = null) => {
+    try {
+      const stored = localStorage.getItem(key);
+      return stored ? JSON.parse(stored) : defaultValue;
+    } catch (error) {
+      console.warn('Failed to load from localStorage:', error);
+      return defaultValue;
+    }
+  };
+
+  // Initialize state from localStorage with proper defaults
+  const [hasLoadedInitialDraft, setHasLoadedInitialDraft] = useState(false);
+  const [formData, setFormData] = useState(() => {
+    const saved = loadFromStorage(STORAGE_KEYS.FORM_DATA);
+    return saved || {
+      title: '', 
+      content: '',
+      author: 'Current User',
+      imageUrl: null
+    };
   });
-  const [ui, setUi] = useState({ settingsOpen: false, snackbarOpen: false, snackbarMessage: '', snackbarSeverity: 'info', previewMode: false });
+
+  const [editorState, setEditorState] = useState(() => {
+    const saved = loadFromStorage(STORAGE_KEYS.EDITOR_STATE);
+    return saved || {
+      isFullscreen: false, 
+      fontSize: 18, 
+      lineHeight: 1.7, 
+      fontFamily: 'Inter', 
+      enableAutoSave: true, 
+      saveInterval: 30000
+    };
+  });
+
+  const [ui, setUi] = useState(() => {
+    const saved = loadFromStorage(STORAGE_KEYS.UI_STATE);
+    return saved || { 
+      settingsOpen: false, 
+      snackbarOpen: false, 
+      snackbarMessage: '', 
+      snackbarSeverity: 'info', 
+      previewMode: false 
+    };
+  });
+
   const [status, setStatus] = useState({ message: '', type: '', progress: 0 });
   const [stats, setStats] = useState({
     wordCount: 0, charCount: 0, sentenceCount: 0, paragraphCount: 0, readingTime: 0,
@@ -49,8 +133,17 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [articleId, setArticleId] = useState(-1); // Track if this is an existing article
-  const [lastSaved, setLastSaved] = useState(null);
+  
+  const [articleId, setArticleId] = useState(() => {
+    const savedId = loadFromStorage(STORAGE_KEYS.ARTICLE_ID);
+    return savedId ? Number(savedId) : -1;
+  });
+  
+  const [lastSaved, setLastSaved] = useState(() => {
+    const savedTimestamp = loadFromStorage(STORAGE_KEYS.LAST_SAVED);
+    return savedTimestamp ? new Date(savedTimestamp) : null;
+  });
+  
   const autoSaveRef = useRef(null);
 
   const handleThemeToggle = () => {
@@ -106,7 +199,12 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     content: formData.content,
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
-      setFormData(prev => ({ ...prev, content: html }));
+      setFormData(prev => {
+        const updated = { ...prev, content: html };
+        // Save form data to localStorage
+        saveToStorage(STORAGE_KEYS.FORM_DATA, updated);
+        return updated;
+      });
       analyzeContent(html);
     },
     editorProps: {
@@ -123,6 +221,228 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
       },
     },
   });
+
+  const handleDeleteImage = async () => {
+    if (!articleId || articleId === -1) {
+      showSnackbar('No article associated with this image', 'warning');
+      return;
+    }
+
+    try {
+      setIsUploadingImage(true);
+      await articlesAPI.deleteImage(articleId);
+      
+      setArticleImage(null);
+      setFormData(prev => {
+        const updated = { ...prev, imageUrl: null };
+        saveToStorage(STORAGE_KEYS.FORM_DATA, updated);
+        return updated;
+      });
+      
+      showSnackbar('Image deleted successfully', 'success');
+    } catch (error) {
+      console.error('Failed to delete image:', error);
+      showSnackbar(`Failed to delete image: ${error.message}`, 'error');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Validate file type and size
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      showSnackbar('Please select a valid image file (JPEG, PNG, GIF, WebP)', 'error');
+      e.target.value = '';
+      return;
+    }
+    
+    // Check file size (e.g., max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      showSnackbar(`Image size must be less than ${maxSize / (1024 * 1024)}MB`, 'error');
+      e.target.value = '';
+      return;
+    }
+    
+    try {
+      setIsUploadingImage(true);
+      
+      let uploadArticleId = articleId;
+      
+      // For new articles, create a draft first
+      if (articleId === -1) {
+        if (!formData.title?.trim()) {
+          showSnackbar('Please add a title before uploading images', 'warning');
+          return;
+        }
+        
+        try {
+          const draftResult = await submitArticle({
+            ...formData,
+            content: editor ? editor.getHTML() : formData.content
+          }, -1, true);
+          
+          if (draftResult?.article_id) {
+            uploadArticleId = Number(draftResult.article_id);
+            setArticleId(uploadArticleId);
+            saveToStorage(STORAGE_KEYS.ARTICLE_ID, uploadArticleId);
+            
+            const now = new Date();
+            setLastSaved(now);
+          } else {
+            throw new Error('Failed to create draft - no article ID returned');
+          }
+        } catch (draftError) {
+          console.error('Failed to create draft for image upload:', draftError);
+          showSnackbar('Failed to save draft before image upload. Please try again.', 'error');
+          return;
+        }
+      }
+      
+      // Upload the image
+      const result = await articlesAPI.uploadImage(uploadArticleId, file);
+      
+      if (result?.url) {
+        setArticleImage(result.url);
+        setFormData(prev => {
+          const updated = { ...prev, imageUrl: result.url };
+          saveToStorage(STORAGE_KEYS.FORM_DATA, updated);
+          return updated;
+        });
+        showSnackbar('Image uploaded successfully', 'success');
+      } else {
+        throw new Error('Upload failed - no URL returned');
+      }
+      
+    } catch (error) {
+      console.error('Image upload error:', error);
+      
+      // More specific error handling
+      let errorMessage = 'Failed to upload image';
+      
+      if (error.response?.status === 413) {
+        errorMessage = 'Image file is too large';
+      } else if (error.response?.status === 415) {
+        errorMessage = 'Unsupported image format';
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      showSnackbar(errorMessage, 'error');
+    } finally {
+      setIsUploadingImage(false);
+      // Clear the file input to allow re-uploading the same file
+      if (e.target) {
+        e.target.value = '';
+      }
+    }
+  };
+
+  // Enhanced save draft function that preserves all state
+  const saveDraft = useCallback(async () => {
+    if (!editor) return;
+    
+    const currentContent = editor.getHTML();
+    const draftData = {
+      title: formData.title,
+      content: currentContent,
+      articleId,
+      timestamp: Date.now(),
+    };
+    
+    saveToStorage(STORAGE_KEYS.DRAFT, draftData);
+    saveToStorage(STORAGE_KEYS.FORM_DATA, { ...formData, content: currentContent });
+    saveToStorage(STORAGE_KEYS.ARTICLE_ID, articleId);
+  }, [formData, articleId, editor]);
+
+  // Load initial draft and all state from localStorage
+  useEffect(() => {
+    if (editor && !hasLoadedInitialDraft) {
+      // Load draft content
+      const saved = loadFromStorage(STORAGE_KEYS.DRAFT);
+      if (saved) {
+        try {
+          const { title, content, articleId: savedId } = saved;
+          if (title && title !== formData.title) {
+            setFormData(prev => ({ ...prev, title }));
+          }
+          if (content && content !== editor.getHTML()) {
+            editor.commands.setContent(content);
+          }
+          if (savedId !== undefined && savedId !== articleId) {
+            setArticleId(savedId);
+            saveToStorage(STORAGE_KEYS.ARTICLE_ID, savedId);
+          }
+        } catch (e) {
+          console.error('Failed to parse saved draft', e);
+        }
+      }
+      
+      setHasLoadedInitialDraft(true);
+    }
+  }, [editor, hasLoadedInitialDraft, formData.title, articleId]);
+
+  // Auto-save with enhanced state persistence
+  useEffect(() => {
+    if (!editor || !hasLoadedInitialDraft) return;
+
+    const timer = setTimeout(() => {
+      saveDraft();
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [formData.title, saveDraft, editor, hasLoadedInitialDraft]);
+
+  // Persist formData changes immediately
+  useEffect(() => {
+    if (hasLoadedInitialDraft) {
+      saveToStorage(STORAGE_KEYS.FORM_DATA, formData);
+    }
+  }, [formData, hasLoadedInitialDraft]);
+
+  // Persist editorState changes
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.EDITOR_STATE, editorState);
+  }, [editorState]);
+
+  // Persist articleId changes
+  useEffect(() => {
+    saveToStorage(STORAGE_KEYS.ARTICLE_ID, articleId);
+  }, [articleId]);
+
+  // Persist lastSaved changes
+  useEffect(() => {
+    if (lastSaved) {
+      saveToStorage(STORAGE_KEYS.LAST_SAVED, lastSaved.getTime());
+    }
+  }, [lastSaved]);
+
+  // Enhanced performAutoSave function
+  const performAutoSave = useCallback(async () => {
+    if (!editor || !hasLoadedInitialDraft) return;
+    
+    const currentContent = editor.getHTML();
+    if (formData.title.trim() || currentContent.trim()) {
+      try {
+        await submitArticle({
+          ...formData,
+          content: currentContent
+        }, articleId, true);
+        const now = new Date();
+        setLastSaved(now);
+        showSnackbar('Auto-saved as draft', 'success');
+      } catch (error) {
+        console.error('Auto-save failed:', error);
+        showSnackbar('Auto-save failed', 'warning');
+      }
+    }
+  }, [formData, articleId, editor, hasLoadedInitialDraft]);
 
   // Content Analysis
   const countSyllables = (word) => {
@@ -187,22 +507,9 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     setAiSuggestions(suggestions);
   };
 
-  const performAutoSave = useCallback(async () => {
-    if (formData.title.trim() || formData.content.trim()) {
-      try {
-        await submitArticle(formData, articleId, true); // Pass articleId here
-        setLastSaved(new Date());
-        showSnackbar('Auto-saved as draft', 'success');
-      } catch (error) {
-        console.error('Auto-save failed:', error);
-        showSnackbar('Auto-save failed', 'warning');
-      }
-    }
-  }, [formData, articleId]);
-
   // Auto-save
   useEffect(() => {
-    if (editorState.enableAutoSave && (formData.title.trim() || formData.content.trim())) {
+    if (editorState.enableAutoSave && hasLoadedInitialDraft && (formData.title.trim() || formData.content.trim())) {
       // Clear existing interval
       if (autoSaveRef.current) {
         clearInterval(autoSaveRef.current);
@@ -219,7 +526,7 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
         clearInterval(autoSaveRef.current);
       }
     };
-  }, [editorState.enableAutoSave, editorState.saveInterval, performAutoSave]);
+  }, [editorState.enableAutoSave, editorState.saveInterval, performAutoSave, hasLoadedInitialDraft, formData.title, formData.content]);
 
   // Snackbar
   const showSnackbar = (message, severity = 'info') => setUi(prev => ({ ...prev, snackbarOpen: true, snackbarMessage: message, snackbarSeverity: severity }));
@@ -338,15 +645,16 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     setStatus({ message: 'Saving draft...', type: 'info', progress: 50 });
 
     try {
-
       const result = await submitArticle(formData, articleId, true);
 
       // Update article ID if this was a new draft
       if (result.article_id) {
-        setArticleId(Number(result.article_id));
+        const newId = Number(result.article_id);
+        setArticleId(newId);
       }
 
-      setLastSaved(new Date());
+      const now = new Date();
+      setLastSaved(now);
       setStatus({ message: 'Draft saved successfully!', type: 'success', progress: 100 });
       showSnackbar('Draft saved successfully!', 'success');
       
@@ -361,58 +669,64 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     }
   };
 
-  // Publish function
+  // Enhanced publish function with better state management
   const handlePublish = async () => {
-  if (isSubmitting) return;
+    if (isSubmitting) return;
 
-  // Validation
-  const errors = [];
-  if (!formData.title.trim()) errors.push('Title is required');
-  if (!formData.content.trim()) errors.push('Content is required');
-  if (stats.wordCount < 50) errors.push('Article must be at least 50 words');
-  
-  if (errors.length > 0) { 
-    showSnackbar(errors.join(', '), 'error'); 
-    return; 
-  }
-
-  setIsSubmitting(true);
-  
-  try {
-    // Convert articleId to number (handle -1 case)
-    const submissionId = articleId === -1 ? undefined : Number(articleId);
+    // Validation
+    const errors = [];
+    if (!formData.title.trim()) errors.push('Title is required');
+    if (!formData.content.trim()) errors.push('Content is required');
+    if (stats.wordCount < 50) errors.push('Article must be at least 50 words');
     
-    const result = await submitArticle(formData, submissionId, false);
-
-    // Update article ID if this was a new submission
-    if (articleId === -1 && result.article_id) {
-      setArticleId(Number(result.article_id));
+    if (errors.length > 0) { 
+      showSnackbar(errors.join(', '), 'error'); 
+      return; 
     }
 
-    showSnackbar(
-      articleId === -1 
-        ? 'Article published successfully!' 
-        : 'Article updated successfully!',
-      'success'
-    );
-
-    // Clear form only for new submissions
-    if (articleId === -1) {
-      setFormData({ title: '', subtitle: '', content: '' });
-      if (editor) editor.commands.setContent('');
-    }
+    setIsSubmitting(true);
     
-  } catch (error) {
-    console.error('Publish error:', error);
-    showSnackbar(
-      `Publish failed: ${error.response?.data?.error || error.message || 'Unknown error'}`,
-      'error'
-    );
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+    try {
+      const submissionId = articleId === -1 ? undefined : Number(articleId);
+      const result = await submitArticle(formData, submissionId, false);
 
+      if (result.article_id) {
+        const newId = Number(result.article_id);
+        setArticleId(newId);
+      }
+
+      showSnackbar(
+        articleId === -1 
+          ? 'Article published successfully!' 
+          : 'Article updated successfully!',
+        'success'
+      );
+
+      // Clear form and localStorage only for new submissions
+      if (articleId === -1) {
+        const clearedFormData = { title: '', content: '', author: 'Current User' };
+        setFormData(clearedFormData);
+        if (editor) editor.commands.setContent('');
+        
+        // Clear all relevant localStorage
+        localStorage.removeItem(STORAGE_KEYS.DRAFT);
+        localStorage.removeItem(STORAGE_KEYS.FORM_DATA);
+        localStorage.removeItem(STORAGE_KEYS.ARTICLE_ID);
+        
+        // Reset articleId
+        setArticleId(-1);
+      }
+      
+    } catch (error) {
+      console.error('Publish error:', error);
+      showSnackbar(
+        `Publish failed: ${error.response?.data?.error || error.message || 'Unknown error'}`,
+        'error'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Fullscreen
   const toggleFullscreen = () => setEditorState(prev => ({ ...prev, isFullscreen: !prev.isFullscreen }));
@@ -446,6 +760,17 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [editor, handleSaveDraft]);
+
+  // Enhanced title change handler with immediate persistence
+  const handleTitleChange = (e) => {
+    const newTitle = e.target.value;
+    setFormData(prev => {
+      const updated = { ...prev, title: newTitle };
+      // Immediate save to localStorage
+      saveToStorage(STORAGE_KEYS.FORM_DATA, updated);
+      return updated;
+    });
+  };
 
   // Color helpers
   const getColor = (score) => {
@@ -545,235 +870,330 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
         </Stack>
       </Box>
 
-      {/* Split Screen */}
+      {/* Main Content / Preview Mode */}
       <Box sx={{
         flex: 1,
         pt: `${HEADER_HEIGHT}px`,
-        display: 'flex',
         minHeight: '100vh',
         width: '100vw',
         overflow: 'hidden'
       }}>
-        {/* Editor - left pane */}
-        <Box
-          sx={{
-            flex: 2,
-            minWidth: 0,
-            borderRight: t => `1px solid ${t.palette.divider}`,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'stretch',
+        {ui.previewMode ? (
+          <ArticlePreview 
+            articleData={{ ...formData }}
+            articleId={articleId}
+            onExitPreview={() => setUi(prev => ({ ...prev, previewMode: false }))}
+          />
+        ) : (
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: 'row', 
             height: `calc(100vh - ${HEADER_HEIGHT}px)`,
-            bgcolor: 'background.default',
-            overflowY: 'auto',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-            '&::-webkit-scrollbar': { display: 'none' },
-          }}
-        >
-          {/* Editor toolbar */}
-          <Box sx={{ display: 'flex', alignItems: 'center', py: 1, px: 3, borderBottom: t => `1px solid ${t.palette.divider}`, gap: 1 }}>
-            {formatActions.map((item, index) => (
-              <Tooltip key={index} title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}>
-                <IconButton 
-                  size="small" 
-                  onClick={item.action} 
-                  // Update the disabled prop to include item.isDisabled
-                  disabled={!editor || item.isDisabled}
-                  sx={{
-                    color: item.isActive ? 'primary.main' : 'text.primary',
-                    bgcolor: item.isActive ? 'primary.lighter' : 'transparent',
-                    border: t => item.isActive ? `1px solid ${t.palette.primary.main}` : 'none',
-                    '&:hover': {
-                      bgcolor: t => item.isActive 
-                        ? alpha(t.palette.primary.main, 0.15)
-                        : alpha(t.palette.action.hover, 0.08),
-                    },
-                    '&:disabled': {
-                      color: 'action.disabled',
-                      bgcolor: 'transparent',
-                    },
-                    transition: t => t.transitions.create(['background-color', 'color', 'border'], {
-                      duration: t.transitions.duration.shorter
-                    }),
-                  }}
-                >
-                  <item.icon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            ))}
-            <Divider orientation="vertical" flexItem sx={{ mx: 1, height: 28 }} />
-            <Tooltip title="Undo">
-              <IconButton 
-                size="small" 
-                onClick={() => editor && editor.chain().focus().undo().run()} 
-                disabled={!editor || !editor.can().undo()}
-              >
-                <Undo />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Redo">
-              <IconButton 
-                size="small" 
-                onClick={() => editor && editor.chain().focus().redo().run()} 
-                disabled={!editor || !editor.can().redo()}
-              >
-                <Redo />
-              </IconButton>
-            </Tooltip>
-            <Box sx={{ flexGrow: 1 }} />
-            <Tooltip title="Toggle Fullscreen">
-              <IconButton size="small" onClick={toggleFullscreen}>
-                {editorState.isFullscreen ? <FullscreenExit /> : <Fullscreen />}
-              </IconButton>
-            </Tooltip>
-          </Box>
-
-          {/* Editor body */}
-          <Box sx={{
-            flex: 1,
-            p: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'stretch',
-            bgcolor: 'background.default'
+            overflow: 'hidden'
           }}>
-            <Box sx={{ p: 4, pb: 2 }}>
-              <TextField
-                fullWidth variant="standard" placeholder="Article Title..."
-                value={formData.title} onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                InputProps={{
-                  disableUnderline: true,
-                  sx: { fontSize: '2.3rem', fontWeight: 700, letterSpacing: '-0.5px' }
-                }} sx={{ mb: 1 }}
-              />
-              <TextField
-                fullWidth variant="standard" placeholder="Catchy Subtitle..."
-                value={formData.subtitle} onChange={(e) => setFormData(prev => ({ ...prev, subtitle: e.target.value }))}
-                InputProps={{
-                  disableUnderline: true,
-                  sx: { fontSize: '1.25rem', color: 'text.secondary', mt: 1 }
-                }} sx={{ mb: 2 }}
-              />
-            </Box>
-            <Divider sx={{ mb: 0 }} />
-
-            {/* Tiptap Editor */}
-            <Box sx={{ 
-              flex: 1, 
-              position: 'relative',
-              '& .tiptap-custom-editor': {
-                outline: 'none',
-                minHeight: '400px',
-                bgcolor: 'background.default',
-                color: theme.palette.text.primary,
-                fontFamily: theme.typography.fontFamily,
-                '&.is-editor-empty::before': {
-                  // Use the placeholder text from the data-placeholder attribute
-                  content: 'attr(data-placeholder)',
-                  color: theme.palette.text.secondary,
-                  opacity: 0.6,
-                  fontStyle: 'italic',
-                  pointerEvents: 'none',
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  padding: '1rem 2rem',
-                  width: '100%',
-                  display: 'block',
-                  whiteSpace: 'pre-line',
-                },
-              },
-            }}>
-              {editor && <EditorContent editor={editor} />}
-            </Box>
-          </Box>
-        </Box>
-
-        {/* Analysis/AI/Stats - right pane */}
-        <Box sx={{
-          flex: 1,
-          minWidth: 320,
-          maxWidth: 430,
-          height: 'calc(100vh - 64px)',
-          display: 'flex',
-          flexDirection: 'column',
-          position: 'relative',
-          bgcolor: 'background.paper',
-          overflowY: 'auto',
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
-          '&::-webkit-scrollbar': { display: 'none' },
-        }}>
-          <Box sx={{ p: 4, pb: 1 }}>
-            {/* Overall Score */}
-            <Box sx={{ textAlign: 'center', mb: 2 }}>
-              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>Overall score</Typography>
-              <Typography variant="h2" sx={{
-                fontWeight: 700,
-                color: getColor((stats.readabilityScore + stats.engagement + stats.seoScore) / 3),
-                my: 1
-              }}>{Math.round((stats.readabilityScore + stats.engagement + stats.seoScore) / 3)}</Typography>
-              <Typography variant="body2" color="text.secondary">{stats.wordCount} words</Typography>
-            </Box>
-            <Divider sx={{ mb: 2 }} />
-
-            {/* Suggestions */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>Suggestions</Typography>
-              <Stack spacing={2}>
-                {aiSuggestions.length === 0 ? (
-                  <Alert severity="success" sx={{ borderRadius: 2 }}>Your content looks good!</Alert>
-                ) : (
-                  aiSuggestions.map((s, i) => (
-                    <Alert key={i} severity={
-                      s.priority === 'high' ? 'error' : s.priority === 'medium' ? 'warning' : 'info'
-                    } sx={{ borderRadius: 2 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{s.title}</Typography>
-                      <Typography variant="body2">{s.description}</Typography>
-                    </Alert>
-                  ))
-                )}
-              </Stack>
-            </Box>
-
-            {/* Stats */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>Document stats</Typography>
-              <Grid container spacing={1}>
-                <Grid item xs={6}>
-                  <Typography variant="body2"><b>Characters:</b> {stats.charCount}</Typography>
-                  <Typography variant="body2"><b>Sentences:</b> {stats.sentenceCount}</Typography>
-                  <Typography variant="body2"><b>Paragraphs:</b> {stats.paragraphCount}</Typography>
-                  <Typography variant="body2"><b>Subheadings:</b> {stats.subheadings}</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="body2"><b>Reading time:</b> {stats.readingTime} min</Typography>
-                  <Typography variant="body2"><b>Complex words:</b> {stats.complexWords}</Typography>
-                  <Typography variant="body2"><b>Passive voice:</b> {stats.passiveVoice}</Typography>
-                  <Typography variant="body2"><b>Transition words:</b> {stats.transitionWords}</Typography>
-                </Grid>
-              </Grid>
-            </Box>
-
-            {/* AI Writing Assistant */}
+            {/* Editor - left pane */}
             <Box sx={{
-              border: t => `1px solid ${t.palette.divider}`,
-              borderRadius: 3,
-              p: 2,
-              mt: 1
+              flex: 2,
+              minWidth: 0,
+              borderRight: t => `1px solid ${t.palette.divider}`,
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              bgcolor: 'background.default',
+              overflow: 'hidden', // Change from 'auto' to 'hidden'
             }}>
-              <Typography variant="h6" sx={{ mb: 1, display: 'flex', alignItems: 'center' }}>
-                <SmartToy fontSize="small" sx={{ mr: 1, color: 'primary.main' }} />
-                AI Writing Assistant
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Get AI-powered writing suggestions.
-              </Typography>
-              <Button variant="outlined" fullWidth sx={{ borderRadius: 2 }} startIcon={<AutoAwesome />}>Improve with AI</Button>
+              {/* Editor toolbar - Make this sticky */}
+              <Box sx={{ 
+                position: 'sticky', 
+                top: 0, 
+                zIndex: 10, 
+                bgcolor: 'background.paper',
+                display: 'flex', 
+                alignItems: 'center', 
+                py: 1, 
+                px: 3, 
+                borderBottom: t => `1px solid ${t.palette.divider}`, 
+                gap: 1 
+              }}>
+                <Box sx={{ flexGrow: 1 }} />
+                  <Tooltip title={articleImage ? "Replace Image" : "Upload Image"}>
+                    <IconButton
+                      component="label"
+                      disabled={isUploadingImage}
+                      sx={{
+                        color: articleImage ? 'primary.main' : 'text.primary',
+                        bgcolor: articleImage ? 'primary.lighter' : 'transparent',
+                        border: t => articleImage ? `1px solid ${t.palette.primary.main}` : 'none',
+                        position: 'relative',
+                        '&:hover .delete-overlay': {
+                          opacity: 1,
+                        }
+                      }}
+                    >
+                      <input
+                        type="file"
+                        hidden
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                      />
+                      {isUploadingImage ? <CircularProgress size={24} /> : <CloudUpload />}
+                      
+                      {/* Delete overlay */}
+                      {articleImage && (
+                        <Box
+                          className="delete-overlay"
+                          sx={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            bgcolor: 'rgba(0,0,0,0.5)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: 0,
+                            transition: 'opacity 0.2s',
+                            borderRadius: '50%',
+                            cursor: 'pointer',
+                            zIndex: 1, // Ensure overlay is on top
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDeleteImage();
+                          }}
+                        >
+                          <Close fontSize="small" sx={{ color: 'common.white' }} />
+                        </Box>
+                      )}
+                    </IconButton>
+                  </Tooltip>
+                {formatActions.map((item, index) => (
+                  <Tooltip key={index} title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}>
+                    <IconButton 
+                      size="small" 
+                      onClick={item.action} 
+                      // Update the disabled prop to include item.isDisabled
+                      disabled={!editor || item.isDisabled}
+                      sx={{
+                        color: item.isActive ? 'primary.main' : 'text.primary',
+                        bgcolor: item.isActive ? 'primary.lighter' : 'transparent',
+                        border: t => item.isActive ? `1px solid ${t.palette.primary.main}` : 'none',
+                        '&:hover': {
+                          bgcolor: t => item.isActive 
+                            ? alpha(t.palette.primary.main, 0.15)
+                            : alpha(t.palette.action.hover, 0.08),
+                        },
+                        '&:disabled': {
+                          color: 'action.disabled',
+                          bgcolor: 'transparent',
+                        },
+                        transition: t => t.transitions.create(['background-color', 'color', 'border'], {
+                          duration: t.transitions.duration.shorter
+                        }),
+                      }}
+                    >
+                      <item.icon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                ))}
+                <Divider orientation="vertical" flexItem sx={{ mx: 1, height: 28 }} />
+                <Tooltip title="Undo">
+                  <IconButton 
+                    size="small" 
+                    onClick={() => editor && editor.chain().focus().undo().run()} 
+                    disabled={!editor || !editor.can().undo()}
+                  >
+                    <Undo />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Redo">
+                  <IconButton 
+                    size="small" 
+                    onClick={() => editor && editor.chain().focus().redo().run()} 
+                    disabled={!editor || !editor.can().redo()}
+                  >
+                    <Redo />
+                  </IconButton>
+                </Tooltip>
+                <Box sx={{ flexGrow: 1 }} />
+                <Tooltip title="Toggle Fullscreen">
+                  <IconButton size="small" onClick={toggleFullscreen}>
+                    {editorState.isFullscreen ? <FullscreenExit /> : <Fullscreen />}
+                  </IconButton>
+                </Tooltip>
+              </Box>
+
+                {/* Scrollable content area - Updated with custom scrollbar */}
+                <Box sx={{ 
+                  flex: 1,
+                  overflowY: 'auto',
+                  // Custom scrollbar styles
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: `${theme.palette.primary.main} ${theme.palette.background.paper}`,
+                  '&::-webkit-scrollbar': {
+                    width: '8px',
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    background: theme.palette.background.paper,
+                    borderRadius: '4px',
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    backgroundColor: theme.palette.primary.main,
+                    borderRadius: '4px',
+                    '&:hover': {
+                      backgroundColor: theme.palette.primary.dark,
+                    }
+                  },
+                }}>
+                  {/* Title and subtitle section */}
+                  <Box sx={{ 
+                    p: 4, 
+                    pb: 2,
+                    wordBreak: 'break-word',
+                  }}>
+            <TextField
+              fullWidth 
+              variant="standard" 
+              placeholder="Article Title..."
+              value={formData.title} 
+              onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+              InputProps={{
+                disableUnderline: true,
+                sx: { 
+                  fontSize: '2.3rem', 
+                  fontWeight: 700, 
+                  letterSpacing: '-0.5px',
+                  wordBreak: 'break-word', // Ensure title wraps
+                }
+              }} 
+              sx={{ mb: 1 }}
+            />
+                </Box>
+                <Divider sx={{ mb: 0 }} />
+
+                {/* Tiptap Editor */}
+                <Box sx={{ 
+                  flex: 1, 
+                  position: 'relative',
+                  '& .tiptap-custom-editor': {
+                    outline: 'none',
+                    minHeight: '400px',
+                    bgcolor: 'background.default',
+                    color: theme.palette.text.primary,
+                    fontFamily: theme.typography.fontFamily,
+                    '&.is-editor-empty::before': {
+                      content: 'attr(data-placeholder)',
+                      color: theme.palette.text.secondary,
+                      opacity: 0.6,
+                      fontStyle: 'italic',
+                      pointerEvents: 'none',
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      padding: '1rem 2rem',
+                      width: '100%',
+                      display: 'block',
+                      whiteSpace: 'pre-line',
+                    },
+                  },
+                }}>
+                  {editor && <EditorContent editor={editor} />}
+                </Box>
+              </Box>
+            </Box>
+
+            {/* Analysis/AI/Stats - right pane */}
+            <Box sx={{
+              flex: 1,
+              minWidth: 320,
+              maxWidth: 430,
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+              bgcolor: 'background.paper',
+              overflowY: 'auto',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+              '&::-webkit-scrollbar': { display: 'none' },
+            }}>
+              <Box sx={{ p: 4, pb: 1 }}>
+                {/* Overall Score */}
+                <Box sx={{ textAlign: 'center', mb: 2 }}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>Overall score</Typography>
+                  <Typography variant="h2" sx={{
+                    fontWeight: 700,
+                    color: getColor((stats.readabilityScore + stats.engagement + stats.seoScore) / 3),
+                    my: 1
+                  }}>{Math.round((stats.readabilityScore + stats.engagement + stats.seoScore) / 3)}</Typography>
+                  <Typography variant="body2" color="text.secondary">{stats.wordCount} words</Typography>
+                </Box>
+                <Divider sx={{ mb: 2 }} />
+
+                {/* Suggestions */}
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>Suggestions</Typography>
+                  <Stack spacing={2}>
+                    {aiSuggestions.length === 0 ? (
+                      <Alert severity="success" sx={{ borderRadius: 2 }}>Your content looks good!</Alert>
+                    ) : (
+                      aiSuggestions.map((s, i) => (
+                        <Alert key={i} severity={
+                          s.priority === 'high' ? 'error' : s.priority === 'medium' ? 'warning' : 'info'
+                        } sx={{ borderRadius: 2 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{s.title}</Typography>
+                          <Typography variant="body2">{s.description}</Typography>
+                        </Alert>
+                      ))
+                    )}
+                  </Stack>
+                </Box>
+
+                {/* Stats */}
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600 }}>Document stats</Typography>
+                  <Grid container spacing={1}>
+                    <Grid item xs={6}>
+                      <Typography variant="body2"><b>Characters:</b> {stats.charCount}</Typography>
+                      <Typography variant="body2"><b>Sentences:</b> {stats.sentenceCount}</Typography>
+                      <Typography variant="body2"><b>Paragraphs:</b> {stats.paragraphCount}</Typography>
+                      <Typography variant="body2"><b>Subheadings:</b> {stats.subheadings}</Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2"><b>Reading time:</b> {stats.readingTime} min</Typography>
+                      <Typography variant="body2"><b>Complex words:</b> {stats.complexWords}</Typography>
+                      <Typography variant="body2"><b>Passive voice:</b> {stats.passiveVoice}</Typography>
+                      <Typography variant="body2"><b>Transition words:</b> {stats.transitionWords}</Typography>
+                    </Grid>
+                  </Grid>
+                </Box>
+
+                {/* AI Writing Assistant */}
+                <Box sx={{
+                  border: t => `1px solid ${t.palette.divider}`,
+                  borderRadius: 3,
+                  p: 2,
+                  mt: 1
+                }}>
+                  <Typography variant="h6" sx={{ mb: 1, display: 'flex', alignItems: 'center' }}>
+                    <SmartToy fontSize="small" sx={{ mr: 1, color: 'primary.main' }} />
+                    AI Writing Assistant
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Get AI-powered writing suggestions.
+                  </Typography>
+                  <Button variant="outlined" fullWidth sx={{ borderRadius: 2 }} startIcon={<AutoAwesome />}>Improve with AI</Button>
+                </Box>
+              </Box>
             </Box>
           </Box>
-        </Box>
+        )}
       </Box>
 
       {/* Snackbar */}
@@ -797,7 +1217,56 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
           <FormControlLabel
             control={<Switch checked={editorState.enableAutoSave} onChange={(e) => setEditorState(prev => ({ ...prev, enableAutoSave: e.target.checked }))} />}
             label="Enable Auto-Save"
+            sx={{ mb: 2 }}
           />
+          
+          <FormControl fullWidth sx={{ mb: 3 }}>
+            <InputLabel>Font Family</InputLabel>
+            <Select
+              value={editorState.fontFamily}
+              label="Font Family"
+              onChange={(e) => setEditorState(prev => ({ ...prev, fontFamily: e.target.value }))}
+            >
+              {FONT_OPTIONS.map((font) => (
+                <MenuItem key={font.value} value={font.value}>
+                  <span style={{ fontFamily: font.value }}>{font.label}</span>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          
+          <Box sx={{ mb: 3 }}>
+            <Typography gutterBottom>Font Size: {editorState.fontSize}px</Typography>
+            <Slider
+              value={editorState.fontSize}
+              onChange={(e, newValue) => setEditorState(prev => ({ ...prev, fontSize: newValue }))}
+              min={12}
+              max={24}
+              step={1}
+              marks={[
+                { value: 12, label: '12' },
+                { value: 16, label: '16' },
+                { value: 20, label: '20' },
+                { value: 24, label: '24' },
+              ]}
+            />
+          </Box>
+          
+          <Box sx={{ mb: 3 }}>
+            <Typography gutterBottom>Line Height: {editorState.lineHeight}</Typography>
+            <Slider
+              value={editorState.lineHeight}
+              onChange={(e, newValue) => setEditorState(prev => ({ ...prev, lineHeight: newValue }))}
+              min={1}
+              max={2}
+              step={0.1}
+              marks={[
+                { value: 1, label: '1' },
+                { value: 1.5, label: '1.5' },
+                { value: 2, label: '2' },
+              ]}
+            />
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setUi(prev => ({ ...prev, settingsOpen: false }))}>Close</Button>
