@@ -34,9 +34,8 @@ def get_csrf_token(request):
 @api_view(['GET'])
 def get_articles(request):
     try:
-        print(SUPABASE_URL)
         # This will raise an exception if Supabase fails
-        response = supabase.table('articles').select('*').execute()
+        response = supabase.table('articles').select('*').eq('status', 'published').execute()
 
         for res in range(len(response.data)):
             user = get_user(response.data[res]['author_id'])
@@ -47,6 +46,22 @@ def get_articles(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+
+@require_frontend_token
+@api_view(['GET'])
+def user_articles(request):
+    try:
+        # This will raise an exception if Supabase fails
+        response = supabase.table('articles').select('*').eq('author_id', request.session['id']).execute()
+
+        for res in range(len(response.data)):
+            user = get_user(response.data[res]['author_id'])
+            response.data[res]['author_first_name'] = user['first_name']
+            response.data[res]['author_last_name'] = user['last_name']
+
+        return JsonResponse(response.data, safe=False)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 @require_frontend_token
 @api_view(['GET'])
@@ -721,3 +736,4 @@ def delete_article_image(request, article_id):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+

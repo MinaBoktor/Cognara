@@ -4,6 +4,7 @@ from . import views
 urlpatterns = [
     path('get_csrf_token', views.get_csrf_token, name="get_csrf_token"),
     path('articles', views.get_articles, name='get_articles'),
+    path('userarticles', views.user_articles, name='user_articles'),
     path('articles/<article_id>', views.get_article, name='get_article'),
     path('articles/<article_id>/comments', views.get_comments, name='get_comments'),
     path('articles/add-comment', views.post_comment, name='post_comment'),

@@ -7,18 +7,42 @@ import Underline from '@tiptap/extension-underline';
 import BulletList from '@tiptap/extension-bullet-list';
 import OrderedList from '@tiptap/extension-ordered-list';
 import ListItem from '@tiptap/extension-list-item';
-import Link from '@tiptap/extension-link';
+import { Link as TiptapLink } from '@tiptap/extension-link';
+import { Link } from 'react-router-dom';
 import TextAlign from '@tiptap/extension-text-align';
 import Placeholder from '@tiptap/extension-placeholder';
 import { articlesAPI } from '../services/api';
 import ArticlePreview from '../components/Article/ArticlePreview';
 import CircularProgress from '@mui/material/CircularProgress';
 import {
-  Box, Button, TextField, Typography, Alert, IconButton, Tooltip, Divider,
-  Stack, Snackbar, Avatar, Grid, LinearProgress, Switch, FormControlLabel, 
-  Dialog, DialogTitle, DialogContent, DialogActions, InputAdornment, ListItemIcon, MenuItem, Select, FormControl,
+  Box,
+  Button,
+  TextField,
+  Typography,
+  Alert,
+  IconButton,
+  Tooltip,
+  Divider,
+  Stack,
+  Snackbar,
+  Avatar,
+  Grid,
+  LinearProgress,
+  Switch,
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  InputAdornment,
+  ListItemIcon,
+  MenuItem,
+  Select,
+  FormControl,
   InputLabel,
   Slider,
+  Badge,
+  Menu
 } from '@mui/material';
 
 import { CloudUpload, Delete } from '@mui/icons-material';
@@ -41,12 +65,37 @@ import {
   MetadataSection,
   ContentSection
 } from './ArticlePage';
+import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import LogoutIcon from '@mui/icons-material/Logout';
+import HelpIcon from '@mui/icons-material/Help';
 
 
 const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
   const theme = useTheme();
   const HEADER_HEIGHT = 64;
-  
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [profileAnchorEl, setProfileAnchorEl] = useState(null);
+  const profileOpen = Boolean(profileAnchorEl);
+
+  const handleProfileMenuOpen = (event) => {
+    setProfileAnchorEl(event.currentTarget);
+  };
+
+  const handleProfileMenuClose = () => {
+    setProfileAnchorEl(null);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/');
+      handleProfileMenuClose();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
   // Enhanced localStorage keys for different state pieces
   const STORAGE_KEYS = {
     DRAFT: 'draft_article',
@@ -171,19 +220,19 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
 
   // Single Tiptap editor instance
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Bold,
-      Italic,
-      Underline,
-      BulletList,
-      OrderedList,
-      ListItem,
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: 'link-style',
-        },
+  extensions: [
+    StarterKit,
+    Bold,
+    Italic,
+    Underline,
+    BulletList,
+    OrderedList,
+    ListItem,
+    TiptapLink.configure({  // Changed from Link to TiptapLink
+      openOnClick: false,
+      HTMLAttributes: {
+        class: 'link-style',
+      },
       }),
       TextAlign.configure({ 
         types: ['heading', 'paragraph'],
@@ -790,85 +839,201 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
       }}
     >
       {/* Header */}
-      <Box sx={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1201,
-        bgcolor: t => t.palette.background.paper,
-        boxShadow: t => t.shadows[1],
-        borderBottom: t => `1px solid ${t.palette.divider}`,
-        height: HEADER_HEIGHT,
-        display: 'flex', alignItems: 'center', px: 4
-      }}>
-        <Box sx={{ 
-          flex: 1, 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          height: HEADER_HEIGHT // Ensure the box takes full header height
-        }}>
-          <Typography 
-            variant="h4"
-            sx={{ 
-              fontWeight: 800,
-              background: theme => `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-              backgroundClip: 'text',
-              WebkitBackgroundClip: 'text',
-              color: 'transparent',
-              letterSpacing: '-0.5px',
-              fontSize: '2rem', // Explicitly set font size
-              display: 'block', // Change to block
-              lineHeight: 1, // Keep line height tight
-              transform: 'translateY(5px)', // Fine-tune vertical position
-            }}
-          >
-            Cognara
-          </Typography>
-          {lastSaved && (
-            <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
-              Last saved: {lastSaved.toLocaleTimeString()}
-            </Typography>
-          )}
-        </Box>
-        <Stack direction="row" spacing={2} alignItems="center">
-            <MenuItem onClick={() => {
-              handleThemeToggle();
-            }}>
-              <ListItemIcon>
-                {isDarkMode ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-              </ListItemIcon>
-            </MenuItem>
-          <Button 
-            variant="outlined" 
-            startIcon={<SaveIcon />} 
-            size="small" 
-            onClick={handleSaveDraft} 
-            disabled={isSubmitting}
-            sx={{ borderRadius: 2 }}
-          >
-            {isSubmitting ? 'Saving...' : 'Save Draft'}
-          </Button>
-          <Button 
-            variant="outlined" 
-            startIcon={<PreviewIcon />} 
-            size="small" 
-            onClick={() => setUi(prev => ({ ...prev, previewMode: !prev.previewMode }))} 
-            sx={{ borderRadius: 2 }}
-          >
-            {ui.previewMode ? 'Exit Preview' : 'Preview'}
-          </Button>
-          <Button 
-            variant="contained" 
-            startIcon={<PublishIcon />} 
-            size="small" 
-            onClick={handlePublish}
-            disabled={isSubmitting}
-            sx={{ borderRadius: 2 }}
-          >
-            {isSubmitting ? 'Publishing...' : 'Publish'}
-          </Button>
-          <IconButton onClick={() => setUi(prev => ({ ...prev, settingsOpen: true }))}><SettingsIcon /></IconButton>
-          <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontWeight: 600 }}>{formData.author?.[0]?.toUpperCase() ?? 'U'}</Avatar>
-        </Stack>
-      </Box>
+<Box sx={{
+  position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1201,
+  bgcolor: t => t.palette.background.paper,
+  boxShadow: t => t.shadows[1],
+  borderBottom: t => `1px solid ${t.palette.divider}`,
+  height: HEADER_HEIGHT,
+  display: 'flex', alignItems: 'center', px: 4
+}}>
+  <Box sx={{ 
+    flex: 1, 
+    display: 'flex', 
+    alignItems: 'center', 
+    gap: 2,
+    height: HEADER_HEIGHT
+  }}>
+    <Typography 
+      component={Link}
+      to="/dashboard"
+      variant="h4"
+      sx={{ 
+        fontWeight: 800,
+        background: theme => `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+        backgroundClip: 'text',
+        WebkitBackgroundClip: 'text',
+        color: 'transparent',
+        letterSpacing: '-0.5px',
+        fontSize: '2rem',
+        display: 'block',
+        lineHeight: 1,
+        transform: 'translateY(5px)',
+        textDecoration: 'none',
+        '&:hover': {
+          opacity: 0.9
+        }
+      }}
+    >
+      Cognara
+    </Typography>
+    {lastSaved && (
+      <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+        Last saved: {lastSaved.toLocaleTimeString()}
+      </Typography>
+    )}
+  </Box>
+  <Stack direction="row" spacing={2} alignItems="center">
+    <MenuItem onClick={handleThemeToggle}>
+      <ListItemIcon>
+        {isDarkMode ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+      </ListItemIcon>
+    </MenuItem>
+    <Button 
+      variant="outlined" 
+      startIcon={<SaveIcon />} 
+      size="small" 
+      onClick={handleSaveDraft} 
+      disabled={isSubmitting}
+      sx={{ borderRadius: 2 }}
+    >
+      {isSubmitting ? 'Saving...' : 'Save Draft'}
+    </Button>
+    <Button 
+      variant="outlined" 
+      startIcon={<PreviewIcon />} 
+      size="small" 
+      onClick={() => setUi(prev => ({ ...prev, previewMode: !prev.previewMode }))} 
+      sx={{ borderRadius: 2 }}
+    >
+      {ui.previewMode ? 'Exit Preview' : 'Preview'}
+    </Button>
+    <Button 
+      variant="contained" 
+      startIcon={<PublishIcon />} 
+      size="small" 
+      onClick={handlePublish}
+      disabled={isSubmitting}
+      sx={{ borderRadius: 2 }}
+    >
+      {isSubmitting ? 'Publishing...' : 'Publish'}
+    </Button>
+    <IconButton onClick={() => setUi(prev => ({ ...prev, settingsOpen: true }))}>
+      <SettingsIcon />
+    </IconButton>
+    
+    {/* User Avatar with dropdown */}
+    <Box 
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1.5,
+        cursor: 'pointer',
+        p: 1,
+        borderRadius: 2,
+        transition: 'all 0.2s ease',
+        '&:hover': {
+          backgroundColor: 'rgba(255, 255, 255, 0.08)'
+        }
+      }}
+      onClick={handleProfileMenuOpen}
+    >
+      <Badge
+        overlap="circular"
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        variant="dot"
+        sx={{
+          '& .MuiBadge-badge': {
+            backgroundColor: theme.palette.success.main,
+            color: theme.palette.success.main,
+            boxShadow: `0 0 0 2px ${theme.palette.background.paper}`,
+          }
+        }}
+      >
+        <Avatar 
+          src={user?.profilePicture || ''} 
+          alt={`${user?.first_name} ${user?.last_name}`}
+          sx={{
+            width: 36,
+            height: 36,
+            bgcolor: theme.palette.primary.main,
+            color: theme.palette.primary.contrastText,
+            fontSize: '0.875rem',
+            fontWeight: 600
+          }}
+        >
+          {user?.first_name?.charAt(0)}{user?.last_name?.charAt(0)}
+        </Avatar>
+      </Badge>
+      <Typography 
+        variant="subtitle2"
+        sx={{
+          fontWeight: 600,
+          color: 'text.primary',
+        }}
+      >
+        {user?.first_name} {user?.last_name}
+      </Typography>
+    </Box>
+  </Stack>
+
+  {/* Profile dropdown menu */}
+  <Menu
+    anchorEl={profileAnchorEl}
+    open={profileOpen}
+    onClose={handleProfileMenuClose}
+    anchorOrigin={{
+      vertical: 'bottom',
+      horizontal: 'center',
+    }}
+    transformOrigin={{
+      vertical: 'top',
+      horizontal: 'center',
+    }}
+    PaperProps={{
+      sx: {
+        mt: 1,
+        minWidth: 200,
+        borderRadius: 1,
+        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+        '& .MuiMenuItem-root': {
+          px: 2,
+          py: '6px',
+        },
+      },
+    }}
+  >
+    <MenuItem onClick={handleProfileMenuClose} component={Link} to="/settings">
+      <ListItemIcon>
+        <SettingsIcon fontSize="small" />
+      </ListItemIcon>
+      Settings
+    </MenuItem>
+    <MenuItem onClick={handleProfileMenuClose} component={Link} to="/help">
+      <ListItemIcon>
+        <HelpIcon fontSize="small" />
+      </ListItemIcon>
+      Help
+    </MenuItem>
+    <Divider sx={{ my: 0.5 }} />
+    <MenuItem onClick={() => {
+      handleThemeToggle();
+      handleProfileMenuClose();
+    }}>
+      <ListItemIcon>
+        {isDarkMode ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+      </ListItemIcon>
+      {isDarkMode ? 'Light Mode' : 'Dark Mode'}
+    </MenuItem>
+    <Divider sx={{ my: 0.5 }} />
+    <MenuItem onClick={handleLogout}>
+      <ListItemIcon>
+        <LogoutIcon fontSize="small" color="error" />
+      </ListItemIcon>
+      <Typography color="error">Logout</Typography>
+    </MenuItem>
+  </Menu>
+</Box>
 
       {/* Main Content / Preview Mode */}
       <Box sx={{

@@ -30,14 +30,28 @@ export const articlesAPI = {
   getAll: () => apiClient.get('articles'),
   getById: (id) => apiClient.get(`articles/${id}`),
   getComments: (id) => apiClient.get(`articles/${id}/comments`),
-  postComment: async (article_id, comment) => {
+  // Get articles by current authenticated user
+  getUserArticles: async () => {
     try {
-      // Check if user is authenticated first
-      const authStatus = await getAuthStatus();
-      if (!authStatus.authenticated) {
-        throw new Error('User not authenticated');
+      // Ensure CSRF token is available
+      await fetchCSRFToken();
+      
+      const response = await apiClient.get('userarticles');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching user articles:', error);
+      
+      // If authentication failed, redirect to login
+      if (error.response?.status === 401) {
+        window.location.href = '/login';
       }
       
+      throw error;
+    }
+  },
+  postComment: async (article_id, comment) => {
+    try {
+
       // Ensure CSRF token is available
       await fetchCSRFToken();
       
