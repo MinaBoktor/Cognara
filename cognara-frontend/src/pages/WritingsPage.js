@@ -56,6 +56,14 @@ import BookIcon from '@mui/icons-material/Book';
 import CreateIcon from '@mui/icons-material/Create';
 import RefreshIcon from '@mui/icons-material/Refresh';
 
+import {
+  Clear as ClearIcon,
+  Update as UpdateIcon,
+  SortByAlpha as SortByAlphaIcon,
+  TextFields as TextFieldsIcon,
+  Image as ImageIcon
+} from '@mui/icons-material';
+
 
 const WritingsPage = ({ isDarkMode, setIsDarkMode }) => {
   const navigate = useNavigate();
@@ -81,6 +89,14 @@ const WritingsPage = ({ isDarkMode, setIsDarkMode }) => {
     header: useRef(null),
     stats: useRef(null),
     content: useRef(null)
+  };
+
+  const handleArticleUpdate = (articleId, updates) => {
+    setArticles(prevArticles => 
+      prevArticles.map(article => 
+        article.id === articleId ? { ...article, ...updates } : article
+      )
+    );
   };
 
   // Intersection Observer for animations
@@ -137,36 +153,122 @@ const WritingsPage = ({ isDarkMode, setIsDarkMode }) => {
     fetchUserArticles();
     }, [user]);
 
-  // Filter and sort articles
-  const filteredAndSortedArticles = React.useMemo(() => {
-    let filtered = articles.filter(article => {
-      const matchesSearch = article.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           article.excerpt.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStatus = statusFilter === 'all' || article.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
+// Enhanced filtering and sorting logic with null safety
+const filteredAndSortedArticles = React.useMemo(() => {
+  if (!articles || articles.length === 0) return [];
 
-    return filtered.sort((a, b) => {
-      const aValue = a[sortBy];
-      const bValue = b[sortBy];
-      const multiplier = sortOrder === 'desc' ? -1 : 1;
-      
-      if (sortBy === 'updated_at' || sortBy === 'created_at') {
-        return multiplier * (new Date(aValue) - new Date(bValue));
-      }
-      
-      if (typeof aValue === 'string') {
-        return multiplier * aValue.localeCompare(bValue);
-      }
-      
-      return multiplier * (aValue - bValue);
-    });
-  }, [articles, searchTerm, statusFilter, sortBy, sortOrder]);
+  // Filter articles
+  let filtered = articles.filter(article => {
+    // Null-safe search filter - search only in title
+    const searchMatch = !searchTerm || 
+      (article.title && article.title.toString().toLowerCase().includes(searchTerm.toLowerCase()));
 
+    // Status filter
+    const statusMatch = statusFilter === 'all' || 
+      (article.status && article.status.toLowerCase() === statusFilter.toLowerCase());
+
+    return searchMatch && statusMatch;
+  });
+
+  // Sort articles with proper handling of word_count and null values
+  filtered.sort((a, b) => {
+    let aValue, bValue;
+
+    switch (sortBy) {
+      case 'word_count':
+        // Handle word_count with proper null/undefined checks
+        aValue = a.word_count || a.wordCount || 0;
+        bValue = b.word_count || b.wordCount || 0;
+        
+        // If word count doesn't exist, calculate it from content
+        if (aValue === 0 && a.content) {
+          aValue = a.content.trim().split(/\s+/).length;
+        }
+        if (bValue === 0 && b.content) {
+          bValue = b.content.trim().split(/\s+/).length;
+        }
+        break;
+
+      case 'title':
+        aValue = (a.title || '').toLowerCase();
+        bValue = (b.title || '').toLowerCase();
+        break;
+
+      case 'created_at':
+        aValue = new Date(a.created_at || a.createdAt || 0);
+        bValue = new Date(b.created_at || b.createdAt || 0);
+        break;
+
+      case 'updated_at':
+        aValue = new Date(a.updated_at || a.updatedAt || a.created_at || a.createdAt || 0);
+        bValue = new Date(b.updated_at || b.updatedAt || b.created_at || b.createdAt || 0);
+        break;
+
+      default:
+        aValue = a[sortBy] || '';
+        bValue = b[sortBy] || '';
+    }
+
+    // Handle different data types
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      return sortOrder === 'asc' 
+        ? aValue.localeCompare(bValue)
+        : bValue.localeCompare(aValue);
+    }
+
+    if (aValue instanceof Date && bValue instanceof Date) {
+      return sortOrder === 'asc' 
+        ? aValue.getTime() - bValue.getTime()
+        : bValue.getTime() - aValue.getTime();
+    }
+
+    // For numbers and other types
+    if (sortOrder === 'asc') {
+      return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+    } else {
+      return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+    }
+  });
+
+  return filtered;
+}, [articles, searchTerm, statusFilter, sortBy, sortOrder]);
+
+// Optional: Add a function to safely get word count
+const getWordCount = (article) => {
+  if (article.word_count || article.wordCount) {
+    return article.word_count || article.wordCount;
+  }
+  
+  if (article.content) {
+    return article.content.trim().split(/\s+/).filter(word => word.length > 0).length;
+  }
+  
+  return 0;
+};
+
+// Enhanced search function with debouncing (optional performance improvement)
+const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+
+useEffect(() => {
+  const timer = setTimeout(() => {
+    setDebouncedSearchTerm(searchTerm);
+  }, 300); // 300ms delay
+
+  return () => clearTimeout(timer);
+}, [searchTerm]);
+
+// Use debouncedSearchTerm instead of searchTerm in the filtering logic above
+// This prevents excessive filtering on every keystroke
+
+  // In WritingsPage.js, update the handleEdit function:
   const handleEdit = (articleId) => {
-    // Navigate to submit page with article data
-    navigate(`/submit?edit=${articleId}`);
-
+    // Navigate to submit page with article ID as state
+    navigate('/submit', { 
+      state: { 
+        articleId: articleId,
+        isEditing: true 
+      } 
+    });
   };
 
   const handleView = (articleId) => {
@@ -190,40 +292,67 @@ const WritingsPage = ({ isDarkMode, setIsDarkMode }) => {
     }
     };
 
-  const stats = [
-    {
-      label: 'Total Articles',
-      value: articles.length,
-      icon: <ArticleIcon />,
-      color: theme.palette.primary.main,
-      progress: 100
-    },
-    {
-      label: 'Published',
-      value: articles.filter(a => a.status === 'published').length,
-      icon: <PublishIcon />,
-      color: theme.palette.success.main,
-      progress: (articles.filter(a => a.status === 'published').length / Math.max(articles.length, 1)) * 100
-    },
-    {
-      label: 'Drafts',
-      value: articles.filter(a => a.status === 'draft').length,
-      icon: <DraftsIcon />,
-      color: theme.palette.warning.main,
-      progress: (articles.filter(a => a.status === 'draft').length / Math.max(articles.length, 1)) * 100
-    },
-    {
-      label: 'Total Words',
-      value: articles.reduce((sum, article) => sum + (article.word_count || 0), 0).toLocaleString(),
-      icon: <BookIcon />,
-      color: theme.palette.secondary.main,
-      progress: 85
-    }
-  ];
+      const calculateWordCount = (text) => {
+      if (!text || typeof text !== 'string') return 0;
+      
+      // Remove HTML tags if present
+      const plainText = text.replace(/<[^>]*>/g, ' ');
+      
+      // Split by whitespace and filter out empty strings
+      const words = plainText
+        .trim()
+        .split(/\s+/)
+        .filter(word => word.length > 0);
+        
+      return words.length;
+    };
+
+ const stats = [
+  {
+    label: 'Total Articles',
+    value: articles.length,
+    icon: <ArticleIcon />,
+    color: theme.palette.primary.main,
+    progress: 100
+  },
+  {
+    label: 'Published',
+    value: articles.filter(a => a.status === 'published').length,
+    icon: <PublishIcon />,
+    color: theme.palette.success.main,
+    progress: (articles.filter(a => a.status === 'published').length / Math.max(articles.length, 1)) * 100
+  },
+  {
+    label: 'Drafts',
+    value: articles.filter(a => a.status === 'draft').length,
+    icon: <DraftsIcon />,
+    color: theme.palette.warning.main,
+    progress: (articles.filter(a => a.status === 'draft').length / Math.max(articles.length, 1)) * 100
+  },
+  {
+    label: 'Total Words',
+    value: articles.reduce((sum, article) => {
+      // Try multiple fields that might contain the article content
+      const wordCount = article.word_count || 
+                       calculateWordCount(article.content) || 
+                       calculateWordCount(article.body) || 
+                       calculateWordCount(article.text) ||
+                       calculateWordCount(article.excerpt) || 
+                       0;
+      return sum + wordCount;
+    }, 0).toLocaleString(),
+    icon: <BookIcon />,
+    color: theme.palette.secondary.main,
+    progress: 85
+  }
+];
+
 
   const handleToggleImageMode = () => {
   setShowImages(prev => !prev);
     };
+
+
 
   return (
     <Box sx={{ minHeight: '100vh', marginTop: '2rem', display: 'flex', flexDirection: 'column' }}>
@@ -237,486 +366,806 @@ const WritingsPage = ({ isDarkMode, setIsDarkMode }) => {
 
       {/* Main Content */}
       <Box sx={{ flex: 1 }}>
-        <Container 
-          maxWidth="xl"
-          sx={{ 
-            py: 4, 
-            marginTop: 5
-          }}
-        >
-{/* Combined Header & Stats Section */}
-<div ref={sectionRefs.header}>
-  <Fade in={visibleSections.header} timeout={800}>
-    <Box sx={{ mb: 4 }}>
-      <Paper
-        elevation={0}
-        sx={{
-          p: 0,
-          borderRadius: 4,
-          background: isDarkMode
-            ? `linear-gradient(135deg, rgba(144, 202, 249, 0.08) 0%, rgba(244, 143, 177, 0.08) 50%, rgba(255, 167, 38, 0.06) 100%)`
-            : `linear-gradient(135deg, rgba(25, 118, 210, 0.08) 0%, rgba(220, 0, 78, 0.08) 50%, rgba(0, 121, 107, 0.06) 100%)`,
-          border: `1px solid ${theme.palette.divider}`,
-          position: "relative",
-          overflow: "hidden",
-          boxShadow: isDarkMode
-            ? "0 10px 25px rgba(255, 255, 255, 0.02), 0 6px 20px rgba(144, 202, 249, 0.05)"
-            : "0 10px 25px rgba(0, 0, 0, 0.08), 0 6px 20px rgba(25, 118, 210, 0.1)",
-          "&::before": {
-            content: '""',
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: "3px",
-            background: isDarkMode
-              ? "linear-gradient(90deg, #FFA726, #F06292, #90caf9)"
-              : "linear-gradient(90deg, #00796B, #42A5F5, #1976d2)",
-            zIndex: 1,
-          },
-        }}
-      >
-        <Box sx={{ p: 3, position: "relative", zIndex: 2 }}>
-          <Grid container spacing={3} alignItems="center">
-            {/* Header Content */}
-            <Grid item xs={12} lg={7}>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  mb: 2,
-                }}
-              >
-                <Box
+        <Container maxWidth={false} sx={{ py: 4, marginTop: 5, px: 3 }}>
+
+{/* Two-Column Layout: Content + Analytics */}
+      <div ref={sectionRefs.header}>
+        <Fade in={visibleSections.header} timeout={800}>
+          <Box sx={{ mb: 4 }}>
+            <Grid container spacing={2} >
+              {/* LEFT COLUMN - Main Content */}
+              <Grid item xs={12} lg={9} width={"53%"}>
+                <Paper
+                  elevation={0}
                   sx={{
-                    p: 1.5,
-                    borderRadius: 3,
+                    p: 4,
+                    borderRadius: 4,
                     background: isDarkMode
-                      ? "linear-gradient(45deg, rgba(255, 167, 38, 0.15), rgba(244, 143, 177, 0.15))"
-                      : "linear-gradient(45deg, rgba(0, 121, 107, 0.15), rgba(66, 165, 245, 0.15))",
-                    mr: 2,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
+                      ? `linear-gradient(135deg, rgba(33, 33, 33, 0.95) 0%, rgba(66, 66, 66, 0.8) 100%)`
+                      : `linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.9) 100%)`,
+                    border: isDarkMode
+                      ? "1px solid rgba(144, 202, 249, 0.3)"
+                      : "1px solid rgba(25, 118, 210, 0.2)",
+                    position: "relative",
+                    overflow: "hidden",
+                    height: "100%",
                     boxShadow: isDarkMode
-                      ? "0 6px 15px rgba(255, 167, 38, 0.2)"
-                      : "0 6px 15px rgba(0, 121, 107, 0.2)",
-                    border: `2px solid ${
-                      isDarkMode
-                        ? "rgba(255, 167, 38, 0.3)"
-                        : "rgba(0, 121, 107, 0.3)"
-                    }`,
+                      ? "0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)"
+                      : "0 20px 40px rgba(25, 118, 210, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.8)",
+                    "&::before": {
+                      content: '""',
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: "4px",
+                      background: isDarkMode
+                        ? "linear-gradient(90deg, #90caf9, #f48fb1, #FFA726)"
+                        : "linear-gradient(90deg, #1976d2, #dc004e, #00796B)",
+                      borderRadius: "4px 4px 0 0",
+                    },
                   }}
                 >
-                  <CreateIcon
+                  <Box
                     sx={{
-                      fontSize: "2rem",
-                      background: isDarkMode
-                        ? "linear-gradient(45deg, #FFA726, #F06292)"
-                        : "linear-gradient(45deg, #00796B, #42A5F5)",
-                      WebkitBackgroundClip: "text",
-                      WebkitTextFillColor: "transparent",
-                      backgroundClip: "text",
-                    }}
-                  />
-                </Box>
-
-                <Box>
-                  <Typography
-                    variant="h3"
-                    component="h1"
-                    sx={{
-                      fontWeight: 800,
-                      background: isDarkMode
-                        ? "linear-gradient(135deg, #EAEAEA 0%, #90caf9 50%, #f48fb1 100%)"
-                        : "linear-gradient(135deg, #2C3E50 0%, #1976d2 50%, #dc004e 100%)",
-                      WebkitBackgroundClip: "text",
-                      WebkitTextFillColor: "transparent",
-                      backgroundClip: "text",
-                      mb: 0.5,
-                      fontSize: { xs: "2rem", md: "2.5rem" },
+                      display: "flex",
+                      alignItems: "center",
+                      mb: 2,
+                      position: "relative",
+                      zIndex: 2,
                     }}
                   >
-                    My Writings
-                  </Typography>
-                  <Typography
-                    variant="h4"
-                    component="span"
-                    sx={{
-                      fontWeight: 300,
-                      color: theme.palette.text.secondary,
-                      fontSize: { xs: "2rem", md: "2.5rem" },
-                    }}
-                  >
-                    Dashboard
-                  </Typography>
-                </Box>
-              </Box>
-
-              <Typography
-                variant="h6"
-                sx={{
-                  color: theme.palette.text.secondary,
-                  mb: 2,
-                  fontWeight: 400,
-                  fontStyle: "italic",
-                  fontSize: { xs: "1.1rem", md: "1.2rem" },
-                }}
-              >
-                Where creativity meets analytics ✨
-              </Typography>
-
-              <Typography
-                variant="body1"
-                sx={{
-                  color: theme.palette.text.secondary,
-                  maxWidth: "600px",
-                  mb: 3,
-                  lineHeight: 1.6,
-                  fontSize: "1rem",
-                }}
-              >
-                Transform your ideas into compelling stories. Track your writing journey, engage with your audience, and watch your creative impact flourish across every piece you craft.
-              </Typography>
-
-            {/* Buttons - Smaller */}
-            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-            <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                component={Link}
-                to="/submit"
-                sx={{
-                borderRadius: 3,
-                px: 3, // smaller horizontal padding
-                py: 1, // smaller vertical padding
-                fontSize: "0.95rem", // smaller text
-                fontWeight: 700,
-                textTransform: "none",
-                background: isDarkMode
-                    ? "linear-gradient(45deg, #FFA726, #F06292)"
-                    : "linear-gradient(45deg, #00796B, #42A5F5)",
-                boxShadow: isDarkMode
-                    ? "0 4px 15px rgba(255, 167, 38, 0.4)"
-                    : "0 4px 15px rgba(0, 121, 107, 0.4)",
-                position: "relative",
-                overflow: "hidden",
-                "&::before": {
-                    content: '""',
-                    position: "absolute",
-                    top: 0,
-                    left: "-100%",
-                    width: "100%",
-                    height: "100%",
-                    background:
-                    "linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)",
-                    transition: "left 0.5s ease",
-                },
-                "&:hover": {
-                    transform: "translateY(-2px) scale(1.01)",
-                    "&::before": { left: "100%" },
-                },
-                }}
-            >
-                Create New Article
-            </Button>
-
-            <Button
-                variant="outlined"
-                sx={{
-                borderRadius: 3,
-                px: 3,
-                py: 1,
-                fontSize: "0.95rem",
-                fontWeight: 600,
-                textTransform: "none",
-                borderColor: theme.palette.primary.main,
-                color: theme.palette.primary.main,
-                borderWidth: "2px",
-                "&:hover": {
-                    transform: "translateY(-1px)",
-                    backgroundColor: `${theme.palette.primary.main}10`,
-                },
-                }}
-            >
-                View All Articles
-            </Button>
-            </Box>
-            </Grid>
-
-            {/* Stats Cards - Right Aligned */}
-            <Grid
-              item
-              xs={12}
-              lg={5}
-              sx={{
-                display: "flex",
-                justifyContent: "flex-end", // right-align
-              }}
-            >
-              <Grid container spacing={2} sx={{ width: "auto" }}>
-                {stats.slice(0, 2).map((stat, index) => (
-                  <Grid item key={index}>
-                    <Paper
-                      elevation={0}
+                    <Box
                       sx={{
-                        p: 2,
-                        height: "130px",
-                        width: "120px",
+                        p: 1.5,
                         borderRadius: 3,
+                        background: isDarkMode
+                          ? `linear-gradient(135deg, rgba(144, 202, 249, 0.15), rgba(244, 143, 177, 0.15))`
+                          : `linear-gradient(135deg, rgba(25, 118, 210, 0.15), rgba(220, 0, 78, 0.15))`,
+                        mr: 2,
                         display: "flex",
-                        flexDirection: "column",
                         alignItems: "center",
                         justifyContent: "center",
+                        boxShadow: isDarkMode
+                          ? "0 6px 15px rgba(144, 202, 249, 0.2)"
+                          : "0 6px 15px rgba(25, 118, 210, 0.2)",
+                        border: isDarkMode
+                          ? "2px solid rgba(144, 202, 249, 0.3)"
+                          : "2px solid rgba(25, 118, 210, 0.3)",
                       }}
                     >
-                      <Box
+                      <CreateIcon
                         sx={{
-                          p: 1,
-                          borderRadius: "50%",
-                          backgroundColor: `${stat.color}15`,
-                          color: stat.color,
-                          width: 40,
-                          height: 40,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          mb: 1,
+                          fontSize: "2rem",
+                          background: isDarkMode
+                            ? "linear-gradient(45deg, #90caf9, #f48fb1)"
+                            : "linear-gradient(45deg, #1976d2, #dc004e)",
+                          WebkitBackgroundClip: "text",
+                          WebkitTextFillColor: "transparent",
+                          backgroundClip: "text",
+                        }}
+                      />
+                    </Box>
+
+                    <Box>
+                      <Typography
+                        variant="h3"
+                        component="h1"
+                        sx={{
+                          fontWeight: 800,
+                          background: isDarkMode
+                            ? "linear-gradient(135deg, #EAEAEA 0%, #90caf9 50%, #f48fb1 100%)"
+                            : "linear-gradient(135deg, #2C3E50 0%, #1976d2 50%, #dc004e 100%)",
+                          WebkitBackgroundClip: "text",
+                          WebkitTextFillColor: "transparent",
+                          backgroundClip: "text",
+                          mb: 0.5,
+                          fontSize: { xs: "2rem", md: "2.5rem" },
                         }}
                       >
-                        {React.cloneElement(stat.icon, {
-                          sx: { fontSize: "1.2rem" },
-                        })}
-                      </Box>
-                      <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                        {stat.value}
+                        My Writings
                       </Typography>
-                      <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
-                        {stat.label}
+                      <Typography
+                        variant="h4"
+                        component="span"
+                        sx={{
+                          fontWeight: 300,
+                          color: theme.palette.text.secondary,
+                          fontSize: { xs: "2rem", md: "2.5rem" },
+                        }}
+                      >
+                        Dashboard
                       </Typography>
-                    </Paper>
-                  </Grid>
-                ))}
-              </Grid>
-            </Grid>
-          </Grid>
-        </Box>
-      </Paper>
-    </Box>
-  </Fade>
-</div>
+                    </Box>
+                  </Box>
 
+                  <Typography
+                    variant="h6"
+                    sx={{
+                      color: theme.palette.text.secondary,
+                      mb: 2,
+                      fontWeight: 400,
+                      fontStyle: "italic",
+                      fontSize: { xs: "1.1rem", md: "1.2rem" },
+                      position: "relative",
+                      zIndex: 2,
+                    }}
+                  >
+                    Where creativity meets analytics ✨
+                  </Typography>
 
+                  <Typography
+                    variant="body1"
+                    sx={{
+                      color: theme.palette.text.secondary,
+                      maxWidth: "600px",
+                      mb: 3,
+                      lineHeight: 1.6,
+                      fontSize: "1rem",
+                      position: "relative",
+                      zIndex: 2,
+                    }}
+                  >
+                    Transform your ideas into compelling stories. Track your writing journey, engage with your audience, and watch your creative impact flourish across every piece you craft.
+                  </Typography>
 
+                  {/* Action Buttons */}
+                  <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", position: "relative", zIndex: 2 }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<AddIcon />}
+                      component={Link}
+                      to="/submit"
+                      sx={{
+                        borderRadius: 3,
+                        px: 3,
+                        py: 1,
+                        fontSize: "0.95rem",
+                        fontWeight: 700,
+                        textTransform: "none",
+                        background: isDarkMode
+                          ? "linear-gradient(45deg, #90caf9, #f48fb1)"
+                          : "linear-gradient(45deg, #1976d2, #dc004e)",
+                        boxShadow: isDarkMode
+                          ? "0 4px 15px rgba(144, 202, 249, 0.4)"
+                          : "0 4px 15px rgba(25, 118, 210, 0.4)",
+                        position: "relative",
+                        overflow: "hidden",
+                        "&::before": {
+                          content: '""',
+                          position: "absolute",
+                          top: 0,
+                          left: "-100%",
+                          width: "100%",
+                          height: "100%",
+                          background:
+                            "linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)",
+                          transition: "left 0.5s ease",
+                        },
+                        "&:hover": {
+                          transform: "translateY(-2px) scale(1.01)",
+                          "&::before": { left: "100%" },
+                        },
+                      }}
+                    >
+                      Create New Article
+                    </Button>
 
-          {/* Filters and Search */}
-          <div ref={sectionRefs.content}>
-            <Fade in={visibleSections.content} timeout={600}>
-              <Box>
-                <Paper elevation={0} sx={{ 
-                  p: 4, 
-                  mb: 4, 
-                  borderRadius: 3,
-                  backgroundColor: theme.palette.background.default,
-                  border: `1px solid ${theme.palette.divider}`
-                }}>
-                  <Grid container spacing={3} alignItems="center">
-  <Grid item xs={12} md={3}>
-    <TextField
-      fullWidth
-      variant="outlined"
-      placeholder="Search your articles..."
-      value={searchTerm}
-      onChange={(e) => setSearchTerm(e.target.value)}
-      InputProps={{
-        startAdornment: (
-          <InputAdornment position="start">
-            <SearchIcon sx={{ color: theme.palette.text.secondary }} />
-          </InputAdornment>
-        ),
-      }}
-      sx={{
-        '& .MuiOutlinedInput-root': {
-          borderRadius: 2
-        }
-      }}
-    />
-  </Grid>
-
-  <Grid item xs={12} md={2}>
-    <FormControl fullWidth>
-      <InputLabel>Status</InputLabel>
-      <Select
-        value={statusFilter}
-        label="Status"
-        onChange={(e) => setStatusFilter(e.target.value)}
-        sx={{ borderRadius: 2 }}
-      >
-        <MenuItem value="all">All Status</MenuItem>
-        <MenuItem value="published">Published</MenuItem>
-        <MenuItem value="draft">Draft</MenuItem>
-        <MenuItem value="pending">Pending</MenuItem>
-      </Select>
-    </FormControl>
-  </Grid>
-
-  <Grid item xs={12} md={2}>
-    <FormControl fullWidth>
-      <InputLabel>Sort By</InputLabel>
-      <Select
-        value={`${sortBy}-${sortOrder}`}
-        label="Sort By"
-        onChange={(e) => {
-          const [field, order] = e.target.value.split('-');
-          setSortBy(field);
-          setSortOrder(order);
-        }}
-        sx={{ borderRadius: 2 }}
-      >
-        <MenuItem value="updated_at-desc">Recently Updated</MenuItem>
-        <MenuItem value="created_at-desc">Recently Created</MenuItem>
-        <MenuItem value="title-asc">Title A-Z</MenuItem>
-        <MenuItem value="title-desc">Title Z-A</MenuItem>
-        <MenuItem value="word_count-desc">Longest First</MenuItem>
-        <MenuItem value="word_count-asc">Shortest First</MenuItem>
-      </Select>
-        </FormControl>
-        </Grid>
-
-        <Grid item xs={12} md={2}>
-            <FormControlLabel
-            control={
-                <Switch
-                checked={showImages}
-                onChange={handleToggleImageMode}
-                color="primary"
-                />
-            }
-            label="Show Images"
-            sx={{
-                '& .MuiFormControlLabel-label': {
-                fontSize: '0.875rem',
-                fontWeight: 600
-                }
-            }}
-            />
-        </Grid>
-
-        <Grid item xs={12} md={2}>
-            <Button
-            fullWidth
-            variant="outlined"
-            startIcon={<RefreshIcon />}
-            onClick={() => window.location.reload()}
-            sx={{ 
-                borderRadius: 2,
-                py: 1.5,
-                textTransform: 'none'
-            }}
-            >
-            Refresh
-            </Button>
-        </Grid>
-
-        <Grid item xs={12} md={1}>
-            <Tooltip title={showImages ? "Switch to compact view" : "Switch to image view"}>
-            <IconButton
-                onClick={handleToggleImageMode}
-                sx={{
-                border: `1px solid ${theme.palette.divider}`,
-                borderRadius: 2,
-                p: 1.5,
-                '&:hover': {
-                    borderColor: theme.palette.primary.main,
-                    backgroundColor: alpha(theme.palette.primary.main, 0.08)
-                }
-                }}
-            >
-                {showImages ? <ViewCompactIcon /> : <ViewModuleIcon />}
-            </IconButton>
-            </Tooltip>
-        </Grid>
-        </Grid>
+                    <Button
+                      variant="outlined"
+                      sx={{
+                        borderRadius: 3,
+                        px: 3,
+                        py: 1,
+                        fontSize: "0.95rem",
+                        fontWeight: 600,
+                        textTransform: "none",
+                        borderColor: theme.palette.primary.main,
+                        color: theme.palette.primary.main,
+                        borderWidth: "2px",
+                        "&:hover": {
+                          transform: "translateY(-1px)",
+                          backgroundColor: `${theme.palette.primary.main}10`,
+                        },
+                      }}
+                    >
+                      View All Articles
+                    </Button>
+                  </Box>
                 </Paper>
+              </Grid>
 
-                {/* Articles Grid */}
-                {loading ? (
-                  <Grid container spacing={4}>
-                    {[...Array(6)].map((_, index) => (
-                      <Grid item xs={12} md={6} lg={4} key={index}>
-                        <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
-                          <Skeleton variant="rectangular" width="100%" height={200} />
-                          <Box sx={{ p: 3 }}>
-                            <Skeleton variant="text" width="60%" height={32} />
-                            <Skeleton variant="text" width="100%" height={20} sx={{ mt: 1 }} />
-                            <Skeleton variant="text" width="100%" height={20} />
-                            <Skeleton variant="text" width="80%" height={20} />
-                            <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-                              <Skeleton variant="rectangular" width={60} height={24} sx={{ borderRadius: 1 }} />
-                              <Skeleton variant="rectangular" width={80} height={24} sx={{ borderRadius: 1 }} />
-                            </Box>
+              {/* RIGHT COLUMN - Analytics Dashboard */}
+              <Grid item xs={12} lg={3} width={"45%"} style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
+                <Paper
+                  elevation={4}
+                  sx={{
+                    p: 4,
+                    borderRadius: 4,
+                    background: isDarkMode
+                      ? "linear-gradient(135deg, rgba(33, 33, 33, 0.95) 0%, rgba(66, 66, 66, 0.8) 100%)"
+                      : "linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.9) 100%)",
+                    border: isDarkMode
+                      ? "1px solid rgba(144, 202, 249, 0.3)"
+                      : "1px solid rgba(25, 118, 210, 0.2)",
+                    boxShadow: isDarkMode
+                      ? "0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)"
+                      : "0 20px 40px rgba(25, 118, 210, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.8)",
+                    position: "relative",
+                    height: "100%",
+                    "&::before": {
+                      content: '""',
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: "4px",
+                      background: isDarkMode
+                        ? "linear-gradient(90deg, #90caf9, #f48fb1, #FFA726)"
+                        : "linear-gradient(90deg, #1976d2, #dc004e, #00796B)",
+                      borderRadius: "4px 4px 0 0",
+                    },
+                  }}
+                >
+                  {/* Analytics Header */}
+                  <Box sx={{ mb: 3, textAlign: "center" }}>
+                    <Typography
+                      variant="h4"
+                      sx={{
+                        fontWeight: 700,
+                        mb: 1,
+                        background: isDarkMode
+                          ? "linear-gradient(135deg, #90caf9, #f48fb1)"
+                          : "linear-gradient(135deg, #1976d2, #dc004e)",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                        backgroundClip: "text",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 1,
+                        fontSize: { xs: "1.5rem", md: "2rem" },
+                      }}
+                    >
+                      Analytics Overview
+                    </Typography>
+                    <Typography
+                      variant="body1"
+                      sx={{ 
+                        color: theme.palette.text.secondary,
+                        fontSize: "1rem"
+                      }}
+                    >
+                      Your writing performance at a glance
+                    </Typography>
+                  </Box>
+
+                  {/* Key Metrics Grid */}
+                  <Grid container spacing={2}>
+                    {stats.map((stat, index) => (
+                      <Grid item xs={6} key={index}>
+                        <Paper
+                          elevation={2}
+                          sx={{
+                            p: 2.5,
+                            width: "100%",
+                            height: "130px",
+                            minWidth: "120px",
+                            aspectRatio: "1/1",
+                            borderRadius: 4,
+                            background: isDarkMode
+                              ? `linear-gradient(135deg, ${stat.color}15, ${stat.color}08)`
+                              : `linear-gradient(135deg, ${stat.color}08, ${stat.color}15)`,
+                            border: `2px solid ${stat.color}30`,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            position: "relative",
+                            overflow: "hidden",
+                            transition: "all 0.3s ease",
+                            "&:hover": {
+                              transform: "translateY(-4px) scale(1.02)",
+                              boxShadow: isDarkMode
+                                ? `0 15px 30px ${stat.color}20`
+                                : `0 15px 30px ${stat.color}25`,
+                            },
+                            "&::before": {
+                              content: '""',
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              height: "3px",
+                              background: stat.color,
+                            },
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              p: 1,
+                              borderRadius: "50%",
+                              backgroundColor: `${stat.color}25`,
+                              color: stat.color,
+                              mb: 1,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: 40,
+                              height: 40,
+                            }}
+                          >
+                            {stat.icon && React.cloneElement(stat.icon, {
+                              sx: { fontSize: "1.3rem" },
+                            })}
                           </Box>
+                          <Typography 
+                            variant="h5" 
+                            sx={{ 
+                              fontWeight: 800,
+                              color: stat.color,
+                              mb: 0.5,
+                            }}
+                          >
+                            {stat.value}
+                          </Typography>
+                          <Typography 
+                            variant="body2" 
+                            sx={{ 
+                              fontSize: "0.85rem",
+                              textAlign: "center",
+                              color: theme.palette.text.secondary,
+                              fontWeight: 500,
+                            }}
+                          >
+                            {stat.label}
+                          </Typography>
                         </Paper>
                       </Grid>
                     ))}
                   </Grid>
-                ) : filteredAndSortedArticles.length === 0 ? (
-                  <Paper elevation={0} sx={{ 
-                    p: 8, 
-                    textAlign: 'center', 
-                    borderRadius: 3,
-                    backgroundColor: theme.palette.background.default,
-                    border: `1px solid ${theme.palette.divider}`
-                  }}>
-                    <ArticleIcon sx={{ fontSize: '4rem', color: theme.palette.text.secondary, mb: 2 }} />
-                    <Typography variant="h4" sx={{ fontWeight: 600, mb: 2 }}>
-                      No articles found
-                    </Typography>
-                    <Typography variant="body1" sx={{ color: theme.palette.text.secondary, mb: 4 }}>
-                      {searchTerm || statusFilter !== 'all' 
-                        ? 'Try adjusting your search or filters.'
-                        : 'Get started by creating your first article.'
-                      }
-                    </Typography>
-                    {!searchTerm && statusFilter === 'all' && (
-                      <Button
-                        variant="contained"
-                        size="large"
-                        startIcon={<AddIcon />}
-                        component={Link}
-                        to="/submit"
-                        sx={{
-                          borderRadius: 2,
-                          px: 4,
-                          py: 1.5,
-                          textTransform: 'none',
-                          fontWeight: 600
-                        }}
-                      >
-                        Create Your First Article
-                      </Button>
-                    )}
-                  </Paper>
-                ) : (
-                  <Grid container spacing={4}>
-                    {filteredAndSortedArticles.map((article) => (
-                        <Grid item xs={12} sm={6} lg={showImages ? 4 : 3} key={article.id}>
-                        <WritingArticleCard
-                            article={article}
-                            onEdit={handleEdit}
-                            onPreview={handleView}
-                            onDelete={handleDelete}
-                            isDeleting={deleteLoading === article.id}
-                            showImages={showImages}
-                            onToggleImageMode={handleToggleImageMode}
-                        />
-                        </Grid>
-                    ))}
-                    </Grid>
-                )}
-              </Box>
-            </Fade>
-          </div>
+                </Paper>
+              </Grid>
+            </Grid>
+          </Box>
+        </Fade>
+      </div>
+
+
+{/* Enhanced Filters and Search */}
+<div ref={sectionRefs.content}>
+  <Fade in={visibleSections.content} timeout={600}>
+    <Box>
+      <Paper elevation={2} sx={{ 
+        p: 4, 
+        mb: 4, 
+        borderRadius: 4,
+        background: `linear-gradient(135deg, ${theme.palette.background.paper} 0%, ${alpha(theme.palette.primary.main, 0.02)} 100%)`,
+        border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+        backdropFilter: 'blur(10px)',
+        position: 'relative',
+        overflow: 'hidden',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: '3px',
+          background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+        }
+      }}>
+        <Grid container spacing={3} alignItems="center">
+          {/* Search Field */}
+          <Grid item xs={12} md={3} width={"40%"}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              placeholder="Search your articles..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon sx={{ 
+                      color: theme.palette.primary.main,
+                      fontSize: '1.2rem'
+                    }} />
+                  </InputAdornment>
+                ),
+                endAdornment: searchTerm && (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      onClick={() => setSearchTerm('')}
+                      sx={{ 
+                        color: theme.palette.text.secondary,
+                        '&:hover': {
+                          color: theme.palette.primary.main,
+                          backgroundColor: alpha(theme.palette.primary.main, 0.1)
+                        }
+                      }}
+                    >
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                )
+              }}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 3,
+                  backgroundColor: alpha(theme.palette.background.paper, 0.8),
+                  backdropFilter: 'blur(8px)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    backgroundColor: alpha(theme.palette.background.paper, 0.9),
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: alpha(theme.palette.primary.main, 0.3),
+                    }
+                  },
+                  '&.Mui-focused': {
+                    backgroundColor: theme.palette.background.paper,
+                    boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.1)}`,
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: theme.palette.primary.main,
+                      borderWidth: '2px'
+                    }
+                  }
+                }
+              }}
+            />
+          </Grid>
+
+          {/* Status Filter */}
+          <Grid item xs={12} md={2}>
+            <FormControl fullWidth>
+              <InputLabel sx={{ 
+                '&.Mui-focused': { 
+                  color: theme.palette.primary.main 
+                } 
+              }}>
+                Status
+              </InputLabel>
+              <Select
+                value={statusFilter}
+                label="Status"
+                onChange={(e) => setStatusFilter(e.target.value)}
+                sx={{ 
+                  borderRadius: 3,
+                  backgroundColor: alpha(theme.palette.background.paper, 0.8),
+                  backdropFilter: 'blur(8px)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    backgroundColor: alpha(theme.palette.background.paper, 0.9),
+                  },
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    transition: 'border-color 0.3s ease'
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: alpha(theme.palette.primary.main, 0.3),
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: theme.palette.primary.main,
+                    borderWidth: '2px'
+                  }
+                }}
+              >
+                <MenuItem value="all">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ 
+                      width: 8, 
+                      height: 8, 
+                      borderRadius: '50%', 
+                      backgroundColor: theme.palette.text.secondary 
+                    }} />
+                    All Status
+                  </Box>
+                </MenuItem>
+                <MenuItem value="published">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ 
+                      width: 8, 
+                      height: 8, 
+                      borderRadius: '50%', 
+                      backgroundColor: theme.palette.success.main 
+                    }} />
+                    Published
+                  </Box>
+                </MenuItem>
+                <MenuItem value="draft">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ 
+                      width: 8, 
+                      height: 8, 
+                      borderRadius: '50%', 
+                      backgroundColor: theme.palette.warning.main 
+                    }} />
+                    Draft
+                  </Box>
+                </MenuItem>
+                <MenuItem value="pending_review">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ 
+                      width: 8, 
+                      height: 8, 
+                      borderRadius: '50%', 
+                      backgroundColor: theme.palette.info.main 
+                    }} />
+                    Pending
+                  </Box>
+                </MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+
+          {/* Sort By */}
+          <Grid item xs={12} md={3}>
+            <FormControl fullWidth>
+              <InputLabel sx={{ 
+                '&.Mui-focused': { 
+                  color: theme.palette.primary.main 
+                } 
+              }}>
+                Sort By
+              </InputLabel>
+              <Select
+                value={`${sortBy}-${sortOrder}`}
+                label="Sort By"
+                onChange={(e) => {
+                  const [field, order] = e.target.value.split('-');
+                  setSortBy(field);
+                  setSortOrder(order);
+                }}
+                sx={{ 
+                  borderRadius: 3,
+                  backgroundColor: alpha(theme.palette.background.paper, 0.8),
+                  backdropFilter: 'blur(8px)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    backgroundColor: alpha(theme.palette.background.paper, 0.9),
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: alpha(theme.palette.primary.main, 0.3),
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: theme.palette.primary.main,
+                    borderWidth: '2px'
+                  }
+                }}
+              >
+                <MenuItem value="updated_at-desc">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <UpdateIcon fontSize="small" />
+                    Recently Updated
+                  </Box>
+                </MenuItem>
+                <MenuItem value="created_at-desc">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <AddIcon fontSize="small" />
+                    Recently Created
+                  </Box>
+                </MenuItem>
+                <MenuItem value="title-asc">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <SortByAlphaIcon fontSize="small" />
+                    Title A-Z
+                  </Box>
+                </MenuItem>
+                <MenuItem value="title-desc">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <SortByAlphaIcon fontSize="small" sx={{ transform: 'rotate(180deg)' }} />
+                    Title Z-A
+                  </Box>
+                </MenuItem>
+                <MenuItem value="word_count-desc">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TextFieldsIcon fontSize="small" />
+                    Longest First
+                  </Box>
+                </MenuItem>
+                <MenuItem value="word_count-asc">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TextFieldsIcon fontSize="small" />
+                    Shortest First
+                  </Box>
+                </MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+
+
+
+          {/* Action Buttons */}
+          <Grid item xs={12} md={2}>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={() => window.location.reload()}
+              sx={{ 
+                borderRadius: 3,
+                py: 1.5,
+                px: 2,
+                textTransform: 'none',
+                fontWeight: 600,
+                backgroundColor: alpha(theme.palette.background.paper, 0.8),
+                backdropFilter: 'blur(8px)',
+                borderColor: alpha(theme.palette.primary.main, 0.2),
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  backgroundColor: alpha(theme.palette.primary.main, 0.05),
+                  borderColor: theme.palette.primary.main,
+                  transform: 'translateY(-1px)',
+                  boxShadow: `0 4px 12px ${alpha(theme.palette.primary.main, 0.2)}`
+                }
+              }}
+            >
+              Refresh
+            </Button>
+          </Grid>
+        </Grid>
+
+        {/* Filter Summary */}
+        {(searchTerm || statusFilter !== 'all') && (
+          <Box sx={{ 
+            mt: 3, 
+            pt: 3, 
+            borderTop: `1px solid ${alpha(theme.palette.divider, 0.5)}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            flexWrap: 'wrap'
+          }}>
+            <Typography variant="body2" sx={{ 
+              color: theme.palette.text.secondary,
+              fontWeight: 500
+            }}>
+              Active filters:
+            </Typography>
+            {searchTerm && (
+              <Chip
+                label={`Search: "${searchTerm}"`}
+                onDelete={() => setSearchTerm('')}
+                deleteIcon={<ClearIcon />}
+                size="small"
+                sx={{
+                  backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                  color: theme.palette.primary.main,
+                  fontWeight: 600,
+                  '& .MuiChip-deleteIcon': {
+                    color: theme.palette.primary.main,
+                    '&:hover': {
+                      color: theme.palette.primary.dark
+                    }
+                  }
+                }}
+              />
+            )}
+            {statusFilter !== 'all' && (
+              <Chip
+                label={`Status: ${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}`}
+                onDelete={() => setStatusFilter('all')}
+                deleteIcon={<ClearIcon />}
+                size="small"
+                sx={{
+                  backgroundColor: alpha(theme.palette.secondary.main, 0.1),
+                  color: theme.palette.secondary.main,
+                  fontWeight: 600,
+                  '& .MuiChip-deleteIcon': {
+                    color: theme.palette.secondary.main,
+                    '&:hover': {
+                      color: theme.palette.secondary.dark
+                    }
+                  }
+                }}
+              />
+            )}
+          </Box>
+        )}
+      </Paper>
+
+      {/* Articles Grid with improved filtering and sorting */}
+      {loading ? (
+        <Grid container spacing={4}>
+          {[...Array(6)].map((_, index) => (
+            <Grid item xs={12} md={6} lg={4} key={index}>
+              <Paper sx={{ 
+                borderRadius: 3, 
+                overflow: 'hidden',
+                background: `linear-gradient(135deg, ${theme.palette.background.paper} 0%, ${alpha(theme.palette.primary.main, 0.02)} 100%)`
+              }}>
+                <Skeleton variant="rectangular" width="100%" height={200} />
+                <Box sx={{ p: 3 }}>
+                  <Skeleton variant="text" width="60%" height={32} />
+                  <Skeleton variant="text" width="100%" height={20} sx={{ mt: 1 }} />
+                  <Skeleton variant="text" width="100%" height={20} />
+                  <Skeleton variant="text" width="80%" height={20} />
+                  <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                    <Skeleton variant="rectangular" width={60} height={24} sx={{ borderRadius: 1 }} />
+                    <Skeleton variant="rectangular" width={80} height={24} sx={{ borderRadius: 1 }} />
+                  </Box>
+                </Box>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      ) : filteredAndSortedArticles.length === 0 ? (
+        <Paper elevation={0} sx={{ 
+          p: 8, 
+          textAlign: 'center', 
+          borderRadius: 4,
+          background: `linear-gradient(135deg, ${theme.palette.background.paper} 0%, ${alpha(theme.palette.primary.main, 0.02)} 100%)`,
+          border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`
+        }}>
+          <Box sx={{ 
+            width: 80, 
+            height: 80, 
+            borderRadius: '50%',
+            background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)}, ${alpha(theme.palette.secondary.main, 0.1)})`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mx: 'auto',
+            mb: 3
+          }}>
+            <ArticleIcon sx={{ fontSize: '2.5rem', color: theme.palette.primary.main }} />
+          </Box>
+          <Typography variant="h4" sx={{ fontWeight: 700, mb: 2, color: theme.palette.text.primary }}>
+            No articles found
+          </Typography>
+          <Typography variant="body1" sx={{ color: theme.palette.text.secondary, mb: 4, maxWidth: 400, mx: 'auto' }}>
+            {searchTerm || statusFilter !== 'all' 
+              ? 'Try adjusting your search or filters to find what you\'re looking for.'
+              : 'Ready to share your thoughts with the world? Create your first article and start your writing journey.'
+            }
+          </Typography>
+          {!searchTerm && statusFilter === 'all' && (
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<AddIcon />}
+              component={Link}
+              to="/submit"
+              sx={{
+                borderRadius: 3,
+                px: 4,
+                py: 1.5,
+                textTransform: 'none',
+                fontWeight: 700,
+                background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+                boxShadow: `0 4px 20px ${alpha(theme.palette.primary.main, 0.3)}`,
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: `0 8px 30px ${alpha(theme.palette.primary.main, 0.4)}`
+                }
+              }}
+            >
+              Create Your First Article
+            </Button>
+          )}
+        </Paper>
+      ) : (
+        <Grid container spacing={4}>
+          {filteredAndSortedArticles.map((article) => (
+            <Grid item xs={12} sm={6} lg={4} key={article.id}>
+              <WritingArticleCard
+                article={article}
+                onEdit={handleEdit}
+                onPreview={handleView}
+                onDelete={handleDelete}
+                isDeleting={deleteLoading === article.id}
+                showImages={showImages}
+                onArticleUpdate={handleArticleUpdate}
+              />
+            </Grid>
+          ))}
+        </Grid>
+      )}
+    </Box>
+  </Fade>
+</div>
+
         </Container>
       </Box>
 

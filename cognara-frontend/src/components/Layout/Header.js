@@ -81,7 +81,7 @@ const Header = ({ isDarkMode, setIsDarkMode, editorMode = false }) => {
     setIsDarkMode(!isDarkMode);
   };
 
-  const navItems = ['Home', 'About', 'Submit', 'Contact'];
+  const navItems = ['Home', 'About', 'Write', 'Contact'];
   const guestRightItems = ['Newsletter', 'Login', 'Sign Up'];
 
   const handleLogout = async () => {

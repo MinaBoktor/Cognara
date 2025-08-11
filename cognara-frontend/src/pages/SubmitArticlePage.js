@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useContext } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Bold from '@tiptap/extension-bold';
@@ -78,6 +79,148 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
   const navigate = useNavigate();
   const [profileAnchorEl, setProfileAnchorEl] = useState(null);
   const profileOpen = Boolean(profileAnchorEl);
+  const location = useLocation();
+  const { state } = location;
+  const editingArticleId = state?.articleId;
+  const isEditing = state?.isEditing;
+
+  // Enhanced localStorage keys for different state pieces
+  const STORAGE_KEYS = {
+    DRAFT: 'draft_article',
+    EDITOR_STATE: 'editor_state_settings',
+    UI_STATE: 'ui_state_settings',
+    FORM_DATA: 'form_data_state',
+    ARTICLE_ID: 'current_article_id',
+    LAST_SAVED: 'last_saved_timestamp'
+  };
+
+  const loadFromStorage = (key, defaultValue = null) => {
+    try {
+      const stored = localStorage.getItem(key);
+      return stored ? JSON.parse(stored) : defaultValue;
+    } catch (error) {
+      console.warn('Failed to load from localStorage:', error);
+      return defaultValue;
+    }
+  };
+
+    const [editorState, setEditorState] = useState(() => {
+    const saved = loadFromStorage(STORAGE_KEYS.EDITOR_STATE);
+    return saved || {
+      isFullscreen: false, 
+      fontSize: 18, 
+      lineHeight: 1.7, 
+      fontFamily: 'Inter', 
+      enableAutoSave: true, 
+      saveInterval: 30000
+    };
+  });
+
+
+
+  const [formData, setFormData] = useState(() => {
+    const saved = loadFromStorage(STORAGE_KEYS.FORM_DATA);
+    return saved || {
+      title: '', 
+      content: '',
+      author: 'Current User',
+      imageUrl: null
+    };
+  });
+
+
+
+  // Single Tiptap editor instance
+  const editor = useEditor({
+  extensions: [
+    StarterKit,
+    Bold,
+    Italic,
+    Underline,
+    BulletList,
+    OrderedList,
+    ListItem,
+    TiptapLink.configure({  // Changed from Link to TiptapLink
+      openOnClick: false,
+      HTMLAttributes: {
+        class: 'link-style',
+      },
+      }),
+      TextAlign.configure({ 
+        types: ['heading', 'paragraph'],
+        alignments: ['left', 'center', 'right', 'justify']
+      }),
+      Placeholder.configure({
+        placeholder: 'Start writing your article here...',
+        emptyEditorClass: 'is-editor-empty',
+        showOnlyWhenEditable: true,
+        showOnlyCurrent: false,
+      }),
+    ],
+    content: formData.content,
+    onUpdate: ({ editor }) => {
+      const html = editor.getHTML();
+      setFormData(prev => {
+        const updated = { ...prev, content: html };
+        // Save form data to localStorage
+        saveToStorage(STORAGE_KEYS.FORM_DATA, updated);
+        return updated;
+      });
+      analyzeContent(html);
+    },
+    editorProps: {
+      attributes: {
+        class: 'prose prose-lg max-w-none focus:outline-none tiptap-custom-editor',
+        style: `
+          min-height: 300px;
+          padding: 1rem 2rem;
+          font-size: ${editorState.fontSize}px;
+          font-family: ${editorState.fontFamily};
+          line-height: ${editorState.lineHeight};
+        `,
+        spellcheck: 'true',
+      },
+    },
+  });
+
+    // Add useEffect to load article data when editing
+  useEffect(() => {
+    const loadArticleForEditing = async () => {
+      if (isEditing && editingArticleId) {
+        try {
+          const articleData = await articlesAPI.getArticleById(editingArticleId);
+          
+          // Set form data with the fetched article
+          setFormData({
+            title: articleData.title || '',
+            content: articleData.content || '',
+            author: articleData.author || 'Current User',
+            imageUrl: articleData.imageUrl || null,
+            // Add any other fields from articleData
+          });
+          
+          // Set the article ID
+          setArticleId(editingArticleId);
+          
+          // If there's an image URL, set it
+          if (articleData.imageUrl) {
+            setArticleImage(articleData.imageUrl);
+          }
+          
+          // Set editor content if editor is available
+          if (editor) {
+            editor.commands.setContent(articleData.content || '');
+          }
+          
+        } catch (error) {
+          console.error('Failed to load article for editing:', error);
+          showSnackbar('Failed to load article for editing', 'error');
+        }
+      }
+    };
+    
+    loadArticleForEditing();
+  }, [isEditing, editingArticleId, editor]);
 
   const handleProfileMenuOpen = (event) => {
     setProfileAnchorEl(event.currentTarget);
@@ -96,15 +239,7 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
       console.error('Logout failed:', error);
     }
   };
-  // Enhanced localStorage keys for different state pieces
-  const STORAGE_KEYS = {
-    DRAFT: 'draft_article',
-    EDITOR_STATE: 'editor_state_settings',
-    UI_STATE: 'ui_state_settings',
-    FORM_DATA: 'form_data_state',
-    ARTICLE_ID: 'current_article_id',
-    LAST_SAVED: 'last_saved_timestamp'
-  };
+
 
   const FONT_OPTIONS = [
     { value: 'Inter', label: 'Inter' },
@@ -128,39 +263,12 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     }
   };
 
-  const loadFromStorage = (key, defaultValue = null) => {
-    try {
-      const stored = localStorage.getItem(key);
-      return stored ? JSON.parse(stored) : defaultValue;
-    } catch (error) {
-      console.warn('Failed to load from localStorage:', error);
-      return defaultValue;
-    }
-  };
 
   // Initialize state from localStorage with proper defaults
   const [hasLoadedInitialDraft, setHasLoadedInitialDraft] = useState(false);
-  const [formData, setFormData] = useState(() => {
-    const saved = loadFromStorage(STORAGE_KEYS.FORM_DATA);
-    return saved || {
-      title: '', 
-      content: '',
-      author: 'Current User',
-      imageUrl: null
-    };
-  });
 
-  const [editorState, setEditorState] = useState(() => {
-    const saved = loadFromStorage(STORAGE_KEYS.EDITOR_STATE);
-    return saved || {
-      isFullscreen: false, 
-      fontSize: 18, 
-      lineHeight: 1.7, 
-      fontFamily: 'Inter', 
-      enableAutoSave: true, 
-      saveInterval: 30000
-    };
-  });
+
+
 
   const [ui, setUi] = useState(() => {
     const saved = loadFromStorage(STORAGE_KEYS.UI_STATE);
@@ -218,58 +326,7 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     }
   };
 
-  // Single Tiptap editor instance
-  const editor = useEditor({
-  extensions: [
-    StarterKit,
-    Bold,
-    Italic,
-    Underline,
-    BulletList,
-    OrderedList,
-    ListItem,
-    TiptapLink.configure({  // Changed from Link to TiptapLink
-      openOnClick: false,
-      HTMLAttributes: {
-        class: 'link-style',
-      },
-      }),
-      TextAlign.configure({ 
-        types: ['heading', 'paragraph'],
-        alignments: ['left', 'center', 'right', 'justify']
-      }),
-      Placeholder.configure({
-        placeholder: 'Start writing your article here...',
-        emptyEditorClass: 'is-editor-empty',
-        showOnlyWhenEditable: true,
-        showOnlyCurrent: false,
-      }),
-    ],
-    content: formData.content,
-    onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      setFormData(prev => {
-        const updated = { ...prev, content: html };
-        // Save form data to localStorage
-        saveToStorage(STORAGE_KEYS.FORM_DATA, updated);
-        return updated;
-      });
-      analyzeContent(html);
-    },
-    editorProps: {
-      attributes: {
-        class: 'prose prose-lg max-w-none focus:outline-none tiptap-custom-editor',
-        style: `
-          min-height: 300px;
-          padding: 1rem 2rem;
-          font-size: ${editorState.fontSize}px;
-          font-family: ${editorState.fontFamily};
-          line-height: ${editorState.lineHeight};
-        `,
-        spellcheck: 'true',
-      },
-    },
-  });
+
 
   const handleDeleteImage = async () => {
     if (!articleId || articleId === -1) {

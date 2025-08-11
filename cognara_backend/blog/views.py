@@ -737,3 +737,35 @@ def delete_article_image(request, article_id):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+
+@require_frontend_token
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def change_status(request):
+    try:
+        article_id = request.data.get('article_id')
+        status = request.data.get('status')
+        user_id = request.session.get('id')
+
+        response = supabase.table('articles').select("*").eq('id', article_id).execute()
+        if not response.data:
+            return JsonResponse({'status': 'Article Not Found'}, status=404)
+        if response.data[0]['author_id'] != user_id:
+            return JsonResponse({'status': 'Unauthorized'}, status=403)
+
+        if status in ['published', 'rejected']:
+            return JsonResponse({'status': 'Unauthorized'}, status=403)
+
+        # Update the article status to 'review'
+        update_data = {
+            "status": status,
+        }
+        response = supabase.table('articles').update(update_data).eq('id', article_id).execute()
+
+        if not response.data:
+            return JsonResponse({'error': 'Failed to update article status'}, status=500)
+
+        return JsonResponse({'status': 'success', 'message': 'Article published for review'}, status=200)
+
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

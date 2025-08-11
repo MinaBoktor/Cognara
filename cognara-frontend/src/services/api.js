@@ -49,6 +49,30 @@ export const articlesAPI = {
       throw error;
     }
   },
+  changeStatus: async (articleId, status) => {
+    try {
+      // Ensure CSRF token is available
+      await fetchCSRFToken();
+      
+      const response = await apiClient.post('change_status', { 
+        article_id: articleId,
+        status: status
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error changing article status:', error);
+      
+      if (error.response?.status === 401) {
+        window.location.href = '/login';
+      } else if (error.response?.status === 403) {
+        throw new Error('You are not authorized to modify this article');
+      } else if (error.response?.status === 404) {
+        throw new Error('Article not found');
+      }
+      
+      throw error;
+    }
+  },
   postComment: async (article_id, comment) => {
     try {
 

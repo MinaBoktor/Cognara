@@ -23,4 +23,5 @@ urlpatterns = [
     path("upload-article-image/<int:article_id>", views.upload_article_image, name="upload_article_image"),
     path("submit", views.submit ,name="submit"),
     path('delete-article-image/<int:article_id>', views.delete_article_image, name='delete_article_image'),
+    path('change_status', views.change_status, name='change_status'),
 ]

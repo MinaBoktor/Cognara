@@ -17,7 +17,10 @@ import {
   Skeleton,
   useTheme,
   alpha,
-  Tooltip
+  Tooltip,
+  CircularProgress,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { formatDistanceToNow } from 'date-fns';
 import { articlesAPI } from '../../services/api';
@@ -36,29 +39,113 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ArticleIcon from '@mui/icons-material/Article';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import CancelIcon from '@mui/icons-material/Cancel';
 
 const WritingArticleCard = ({ 
   article, 
   onEdit, 
   onPreview, 
   onDelete, 
+  onPublish,
+  onChangeVisibility,
+  onWithdraw,
   isDeleting = false,
   showImages = true,
-  onToggleImageMode
+  onToggleImageMode,
+  onArticleUpdate // New prop to handle article updates
 }) => {
   const theme = useTheme();
-  const [anchorEl, setAnchorEl] = useState(null);
   const [imageUrl, setImageUrl] = useState(null);
   const [imageLoading, setImageLoading] = useState(true);
   const [contentAnalysis, setContentAnalysis] = useState(null);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
 
-  const handleMenuOpen = (event) => {
-    event.stopPropagation();
-    setAnchorEl(event.currentTarget);
+
+
+  const handleCardClick = () => {
+    if (article.status === 'published') {
+      // Redirect to actual article URL
+      window.open(article.url || `/articles/${article.slug || article.id}`, '_blank');
+    } else {
+      // Redirect to preview page for draft/pending articles
+      onPreview(article.id);
+    }
   };
 
-  const handleMenuClose = () => {
-    setAnchorEl(null);
+  const handleStatusChange = async (e, newStatus) => {
+    e.stopPropagation();
+    
+    if (!article.id) {
+      setNotification({
+        open: true,
+        message: 'Article ID is missing',
+        severity: 'error'
+      });
+      return;
+    }
+
+    setIsPublishing(true);
+    
+    try {
+      await articlesAPI.changeStatus(article.id, newStatus);
+      
+      let successMessage = '';
+      switch (newStatus) {
+        case 'under-review':
+          successMessage = 'Article submitted for review successfully!';
+          break;
+        case 'draft':
+          successMessage = 'Article withdrawn to draft successfully!';
+          break;
+        case 'published':
+          successMessage = 'Article published successfully!';
+          break;
+        default:
+          successMessage = 'Article status updated successfully!';
+      }
+
+      setNotification({
+        open: true,
+        message: successMessage,
+        severity: 'success'
+      });
+
+      // Update the local article state immediately
+      const updatedArticle = { ...article, status: newStatus };
+      if (onArticleUpdate) {
+        onArticleUpdate(article.id, { status: newStatus });
+      }
+      
+    } catch (error) {
+      console.error('Error changing article status:', error);
+      
+      let errorMessage = 'Failed to update article status';
+      
+      if (error.message) {
+        errorMessage = error.message;
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      setNotification({
+        open: true,
+        message: errorMessage,
+        severity: 'error'
+      });
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  
+
+  const handleNotificationClose = (event, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
+    setNotification({ ...notification, open: false });
   };
 
   // Load article image
@@ -137,11 +224,11 @@ const WritingArticleCard = ({
         icon: <DraftsIcon sx={{ fontSize: '1rem' }} />,
         label: 'Draft'
       },
-      'under-review': { 
+      pending_review: { 
         color: theme.palette.info.main, 
         backgroundColor: alpha(theme.palette.info.main, 0.1),
         icon: <PendingIcon sx={{ fontSize: '1rem' }} />,
-        label: 'Under Review'
+        label: 'Pending Review'
       },
       scheduled: { 
         color: theme.palette.secondary.main, 
@@ -164,9 +251,7 @@ const WritingArticleCard = ({
   };
 
   const plainTextContent = stripHtml(article?.content || article?.excerpt || '');
-  const previewText = plainTextContent.length > 120 
-    ? plainTextContent.substring(0, 120) + '...' 
-    : plainTextContent;
+  const previewText = plainTextContent;
 
   // Date formatting
   const createdDate = article?.created_at ? new Date(article.created_at) : null;
@@ -181,6 +266,70 @@ const WritingArticleCard = ({
   };
 
   const hasImage = imageUrl && showImages;
+  const maxlines = hasImage ? 2 : 12;
+
+  // Get the appropriate action button based on article status
+  const getActionButton = () => {
+    switch (article?.status) {
+      case 'published':
+        return (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<VisibilityOffIcon />}
+            onClick={(e) => handleStatusChange(e, 'draft')}
+            color="secondary"
+            sx={{
+              flex: 1,
+              textTransform: 'none',
+              fontWeight: 600,
+              borderRadius: 2,
+            }}
+          >
+            Unpublish
+          </Button>
+        );
+      case 'draft':
+        return (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={isPublishing ? <CircularProgress size={16} /> : <PublishIcon />}
+            onClick={(e) => handleStatusChange(e, 'pending_review')}
+            color="success"
+            disabled={isPublishing}
+            sx={{
+              flex: 1,
+              textTransform: 'none',
+              fontWeight: 600,
+              borderRadius: 2,
+            }}
+          >
+            {isPublishing ? 'Publishing...' : 'Publish'}
+          </Button>
+        );
+      case 'pending_review':
+        return (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<CancelIcon />}
+            onClick={(e) => handleStatusChange(e, 'draft')}
+            color="warning"
+            sx={{
+              flex: 1,
+              textTransform: 'none',
+              fontWeight: 600,
+              borderRadius: 2,
+            }}
+          >
+            Withdraw
+          </Button>
+        );
+      default:
+        return null;
+    }
+  };
 
   // Early return if article is not provided (after all hooks)
   if (!article) {
@@ -188,292 +337,200 @@ const WritingArticleCard = ({
   }
 
   return (
-    <Card
-      sx={{
-        width: 350, // Fixed width
-        height: 550, // Fixed height
-        display: 'flex',
-        flexDirection: 'column',
-        borderRadius: 3,
-        overflow: 'hidden',
-        backgroundColor: theme.palette.background.paper,
-        border: `1px solid ${theme.palette.divider}`,
-        transition: 'all 0.3s ease',
-        position: 'relative',
-        '&:hover': {
-          transform: 'translateY(-4px)',
-          boxShadow: '0 8px 25px rgba(0,0,0,0.12)',
-          borderColor: theme.palette.primary.main,
-        },
-        opacity: article.status === 'draft' ? 0.9 : 1,
-      }}
-    >
-      {/* Action Menu */}
-      <Box sx={{ 
-        position: 'absolute', 
-        top: 8, 
-        right: 8, 
-        zIndex: 3 
-      }}>
-        <IconButton
-          size="small"
-          onClick={handleMenuOpen}
-          disabled={isDeleting}
-          sx={{ 
-            backgroundColor: alpha(theme.palette.background.paper, 0.9),
-            backdropFilter: 'blur(10px)',
-            border: `1px solid ${theme.palette.divider}`,
-            '&:hover': {
-              backgroundColor: theme.palette.background.paper,
-              borderColor: theme.palette.primary.main,
-            }
-          }}
-        >
-          {isDeleting ? (
-            <Box sx={{ 
-              width: 20, 
-              height: 20, 
-              border: `2px solid ${theme.palette.primary.main}`,
-              borderTop: `2px solid transparent`,
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite',
-            }} />
+    <>
+      <Card
+        onClick={handleCardClick}
+        sx={{
+          width: 350, // Fixed width
+          height: 550, // Fixed height
+          display: 'flex',
+          flexDirection: 'column',
+          borderRadius: 3,
+          overflow: 'hidden',
+          backgroundColor: theme.palette.background.paper,
+          border: `1px solid ${theme.palette.divider}`,
+          transition: 'all 0.3s ease',
+          position: 'relative',
+          cursor: 'pointer',
+          '&:hover': {
+            transform: 'translateY(-4px)',
+            boxShadow: '0 8px 25px rgba(0,0,0,0.12)',
+            borderColor: theme.palette.primary.main,
+          },
+          opacity: article.status === 'draft' ? 0.9 : 1,
+        }}
+      >
+
+        {/* Image Section - Only show if there's an image */}
+        {hasImage && (
+          imageLoading ? (
+            <Skeleton variant="rectangular" height={180} />
           ) : (
-            <MoreVertIcon />
-          )}
-        </IconButton>
-      </Box>
+            <CardMedia
+              component="img"
+              image={imageUrl}
+              alt={article.title}
+              sx={{
+                height: 180,
+                objectFit: 'cover',
+              }}
+            />
+          )
+        )}
 
-      {/* Image Section */}
-      {hasImage ? (
-        imageLoading ? (
-          <Skeleton variant="rectangular" height={180} />
-        ) : (
-          <CardMedia
-            component="img"
-            image={imageUrl}
-            alt={article.title}
-            sx={{
-              height: 180,
-              objectFit: 'cover',
-            }}
-          />
-        )
-      ) : (
-        // No image design - decorative header
-        <Box
-          sx={{
-            height: 120,
-            background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${alpha(theme.palette.secondary.main, 0.1)} 100%)`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
-            overflow: 'hidden',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              top: -50,
-              right: -50,
-              width: 100,
-              height: 100,
-              borderRadius: '50%',
-              backgroundColor: alpha(theme.palette.primary.main, 0.05),
-            },
-            '&::after': {
-              content: '""',
-              position: 'absolute',
-              bottom: -30,
-              left: -30,
-              width: 80,
-              height: 80,
-              borderRadius: '50%',
-              backgroundColor: alpha(theme.palette.secondary.main, 0.05),
-            }
-          }}
-        >
-          <ArticleIcon 
-            sx={{ 
-              fontSize: '3rem', 
-              color: alpha(theme.palette.primary.main, 0.3),
-              zIndex: 1
-            }} 
-          />
-        </Box>
-      )}
+        <CardContent sx={{ 
+          flex: 1, 
+          p: 2.5, 
+          display: 'flex', 
+          flexDirection: 'column',
+          overflow: 'hidden' // Prevent content overflow
+        }}>
+          {/* Status Badge */}
+          <Box sx={{ mb: 2 }}>
+            <Chip
+              icon={statusConfig.icon}
+              label={statusConfig.label}
+              size="small"
+              sx={{
+                backgroundColor: statusConfig.backgroundColor,
+                color: statusConfig.color,
+                fontWeight: 600,
+                height: 28,
+                border: `1px solid ${alpha(statusConfig.color, 0.2)}`,
+              }}
+            />
+          </Box>
 
-      <CardContent sx={{ 
-        flex: 1, 
-        p: 2.5, 
-        display: 'flex', 
-        flexDirection: 'column',
-        overflow: 'hidden' // Prevent content overflow
-      }}>
-        {/* Status Badge */}
-        <Box sx={{ mb: 2 }}>
-          <Chip
-            icon={statusConfig.icon}
-            label={statusConfig.label}
-            size="small"
-            sx={{
-              backgroundColor: statusConfig.backgroundColor,
-              color: statusConfig.color,
-              fontWeight: 600,
-              height: 28,
-              border: `1px solid ${alpha(statusConfig.color, 0.2)}`,
-            }}
-          />
-        </Box>
-
-        {/* Title */}
-        <Typography
-          variant="h6"
-          sx={{
-            fontWeight: 700,
-            color: theme.palette.text.primary,
-            mb: 1.5,
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-            lineHeight: 1.25,
-            minHeight: '2.5em', // Reserve space for consistent layout
-          }}
-        >
-          {article.title || 'Untitled Article'}
-        </Typography>
-
-        {/* Content Preview */}
-        {previewText && (
+          {/* Title */}
           <Typography
-            variant="body2"
+            variant="h6"
             sx={{
-              color: theme.palette.text.secondary,
-              mb: 2,
+              fontWeight: 700,
+              color: theme.palette.text.primary,
+              mb: 1.5,
               display: '-webkit-box',
-              WebkitLineClamp: hasImage ? 2 : 4, // Less lines for cards with images
+              WebkitLineClamp: 2,
               WebkitBoxOrient: 'vertical',
               overflow: 'hidden',
-              lineHeight: 1.4,
-              minHeight: hasImage ? '2.8em' : '5.6em', // Reserve space to prevent layout shift
+              lineHeight: 1.25,
+              minHeight: '2.5em', // Reserve space for consistent layout
             }}
           >
-            {previewText}
+            {article.title || 'Untitled Article'}
           </Typography>
-        )}
 
-        {/* Simplified Content Stats */}
-        {contentAnalysis && (
-          <Box sx={{ 
-            mb: 2,
-            display: 'flex',
-            gap: 1,
-          }}>
-            {/* Word Count */}
-            <Box sx={{
-              flex: 1,
-              p: 1,
-              backgroundColor: alpha(theme.palette.success.main, 0.08),
-              borderRadius: 1.5,
-              border: `1px solid ${alpha(theme.palette.success.main, 0.15)}`,
-              textAlign: 'center'
-            }}>
-              <Typography variant="body2" sx={{ fontWeight: 800, color: theme.palette.success.dark, fontSize: '0.875rem' }}>
-                {contentAnalysis.wordCount.toLocaleString()}
-              </Typography>
-              <Typography variant="caption" sx={{ color: theme.palette.success.main, fontSize: '0.7rem', fontWeight: 900 }}>
-                words
-              </Typography>
-            </Box>
-
-            {/* Reading Time */}
-            <Box sx={{
-              flex: 1,
-              p: 1,
-              backgroundColor: alpha(theme.palette.info.main, 0.08),
-              borderRadius: 1.5,
-              border: `1px solid ${alpha(theme.palette.info.main, 0.15)}`,
-              textAlign: 'center'
-            }}>
-              <Typography variant="body2" sx={{ fontWeight: 800, color: theme.palette.info.dark, fontSize: '0.875rem' }}>
-                {contentAnalysis.readingTime}
-              </Typography>
-              <Typography variant="caption" sx={{ color: theme.palette.info.main, fontSize: '0.7rem', fontWeight: 600 }}>
-                min read
-              </Typography>
-            </Box>
-
-            {/* Readability Score */}
-            <Box sx={{
-              flex: 1,
-              p: 1,
-              backgroundColor: alpha(getReadabilityColor(contentAnalysis.readabilityScore), 0.08),
-              borderRadius: 1.5,
-              border: `1px solid ${alpha(getReadabilityColor(contentAnalysis.readabilityScore), 0.15)}`,
-              textAlign: 'center'
-            }}>
-              <Typography variant="body2" sx={{ 
-                fontWeight: 800, 
-                color: getReadabilityColor(contentAnalysis.readabilityScore), 
-                fontSize: '0.875rem' 
-              }}>
-                {contentAnalysis.readabilityScore}%
-              </Typography>
-              <Typography variant="caption" sx={{ 
-                color: alpha(getReadabilityColor(contentAnalysis.readabilityScore), 0.8), 
-                fontSize: '0.7rem',
-                fontWeight: 600
-              }}>
-                readable
-              </Typography>
-            </Box>
-          </Box>
-        )}
-
-        <Box sx={{ mt: 'auto', pt: 1 }}>
-          {/* Date */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.5 }}>
-            <CalendarTodayIcon sx={{ fontSize: '0.9rem', color: theme.palette.text.secondary }} />
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {displayDate ? (
-                <>
-                  {updatedDate && updatedDate > createdDate ? 'Updated ' : 'Created '}
-                  {formatDistanceToNow(displayDate, { addSuffix: true })}
-                </>
-              ) : 'No date'}
-            </Typography>
-          </Box>
-
-          {/* Action Buttons - All same size */}
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<EditIcon />}
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(article.id);
-              }}
+          {/* Content Preview - More lines when no image */}
+          {previewText && (
+            <Typography
               sx={{
-                flex: 1,
-                textTransform: 'none',
-                fontWeight: 600,
-                borderRadius: 2,
+                lineHeight: 1.6,
+                fontSize: '0.875rem',
+                color: theme.palette.text.secondary,
+                overflow: 'hidden',
+                display: '-webkit-box',
+                WebkitBoxOrient: 'vertical',
+                WebkitLineClamp: 12,
+                height: hasImage ? '3em' : '16em', // Adjust height based on image presence
+                mb: 2
               }}
             >
-              Edit
-            </Button>
+              {previewText}
+            </Typography>
+          )}
 
-            {article.status === 'published' && (
+          {/* Simplified Content Stats */}
+          {contentAnalysis && (
+            <Box sx={{ 
+              mb: 2,
+              display: 'flex',
+              gap: 1,
+            }}>
+              {/* Word Count */}
+              <Box sx={{
+                flex: 1,
+                p: 1,
+                backgroundColor: alpha(theme.palette.success.main, 0.08),
+                borderRadius: 1.5,
+                border: `1px solid ${alpha(theme.palette.success.main, 0.15)}`,
+                textAlign: 'center'
+              }}>
+                <Typography variant="body2" sx={{ fontWeight: 800, color: theme.palette.success.dark, fontSize: '0.875rem' }}>
+                  {contentAnalysis.wordCount.toLocaleString()}
+                </Typography>
+                <Typography variant="caption" sx={{ color: theme.palette.success.main, fontSize: '0.7rem', fontWeight: 900 }}>
+                  words
+                </Typography>
+              </Box>
+
+              {/* Reading Time */}
+              <Box sx={{
+                flex: 1,
+                p: 1,
+                backgroundColor: alpha(theme.palette.info.main, 0.08),
+                borderRadius: 1.5,
+                border: `1px solid ${alpha(theme.palette.info.main, 0.15)}`,
+                textAlign: 'center'
+              }}>
+                <Typography variant="body2" sx={{ fontWeight: 800, color: theme.palette.info.dark, fontSize: '0.875rem' }}>
+                  {contentAnalysis.readingTime}
+                </Typography>
+                <Typography variant="caption" sx={{ color: theme.palette.info.main, fontSize: '0.7rem', fontWeight: 600 }}>
+                  min read
+                </Typography>
+              </Box>
+
+              {/* Readability Score */}
+              <Box sx={{
+                flex: 1,
+                p: 1,
+                backgroundColor: alpha(getReadabilityColor(contentAnalysis.readabilityScore), 0.08),
+                borderRadius: 1.5,
+                border: `1px solid ${alpha(getReadabilityColor(contentAnalysis.readabilityScore), 0.15)}`,
+                textAlign: 'center'
+              }}>
+                <Typography variant="body2" sx={{ 
+                  fontWeight: 800, 
+                  color: getReadabilityColor(contentAnalysis.readabilityScore), 
+                  fontSize: '0.875rem' 
+                }}>
+                  {contentAnalysis.readabilityScore}%
+                </Typography>
+                <Typography variant="caption" sx={{ 
+                  color: alpha(getReadabilityColor(contentAnalysis.readabilityScore), 0.8), 
+                  fontSize: '0.7rem',
+                  fontWeight: 600
+                }}>
+                  readable
+                </Typography>
+              </Box>
+            </Box>
+          )}
+
+          <Box sx={{ mt: 'auto', pt: 1 }}>
+            {/* Date */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.5 }}>
+              <CalendarTodayIcon sx={{ fontSize: '0.9rem', color: theme.palette.text.secondary }} />
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {displayDate ? (
+                  <>
+                    {updatedDate && updatedDate > createdDate ? 'Updated ' : 'Created '}
+                    {formatDistanceToNow(displayDate, { addSuffix: true })}
+                  </>
+                ) : 'No date'}
+              </Typography>
+            </Box>
+
+            {/* Action Buttons */}
+            <Stack direction="row" spacing={1}>
               <Button
                 variant="outlined"
                 size="small"
-                startIcon={<VisibilityIcon />}
+                startIcon={<EditIcon />}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onPreview(article.id);
+                  onEdit(article.id);
                 }}
-                color="secondary"
+                disabled={isPublishing}
                 sx={{
                   flex: 1,
                   textTransform: 'none',
@@ -481,96 +538,52 @@ const WritingArticleCard = ({
                   borderRadius: 2,
                 }}
               >
-                View
+                Edit
               </Button>
-            )}
 
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<DeleteIcon />}
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(article.id);
-              }}
-              color="error"
-              sx={{
-                flex: 1,
-                textTransform: 'none',
-                fontWeight: 600,
-                borderRadius: 2,
-              }}
-            >
-              Delete
-            </Button>
-          </Stack>
-        </Box>
-      </CardContent>
+              {getActionButton()}
 
-      {/* Context Menu */}
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-        PaperProps={{
-          sx: {
-            borderRadius: 2,
-            minWidth: 180,
-            boxShadow: theme.shadows[8],
-            mt: 1,
-          }
-        }}
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<DeleteIcon />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(article.id);
+                }}
+                color="error"
+                disabled={isPublishing}
+                sx={{
+                  flex: 1,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  borderRadius: 2,
+                }}
+              >
+                Delete
+              </Button>
+            </Stack>
+          </Box>
+        </CardContent>
+
+      </Card>
+
+      {/* Notification Snackbar */}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={6000}
+        onClose={handleNotificationClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
-        <MenuItem 
-          onClick={() => { 
-            onEdit(article.id); 
-            handleMenuClose(); 
-          }}
+        <Alert 
+          onClose={handleNotificationClose} 
+          severity={notification.severity} 
+          sx={{ width: '100%' }}
         >
-          <ListItemIcon>
-            <EditIcon fontSize="small" />
-          </ListItemIcon>
-          <ListItemText>Edit Article</ListItemText>
-        </MenuItem>
-        
-        {article.status === 'published' && (
-          <MenuItem 
-            onClick={() => { 
-              onPreview(article.id); 
-              handleMenuClose(); 
-            }}
-          >
-            <ListItemIcon>
-              <VisibilityIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>View Published</ListItemText>
-          </MenuItem>
-        )}
-        
-        <Divider />
-        
-        <MenuItem 
-          onClick={() => { 
-            onDelete(article.id); 
-            handleMenuClose(); 
-          }}
-          sx={{ color: theme.palette.error.main }}
-        >
-          <ListItemIcon>
-            <DeleteIcon fontSize="small" sx={{ color: theme.palette.error.main }} />
-          </ListItemIcon>
-          <ListItemText>Delete Article</ListItemText>
-        </MenuItem>
-      </Menu>
-
-      {/* CSS for loading spinner */}
-      <style jsx>{`
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-    </Card>
+          {notification.message}
+        </Alert>
+      </Snackbar>
+    </>
   );
 };
 
