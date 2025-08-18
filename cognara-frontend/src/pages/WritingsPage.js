@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Container,
@@ -116,17 +116,19 @@ const WritingsPage = ({ isDarkMode, setIsDarkMode }) => {
       }
     );
 
-    Object.keys(sectionRefs).forEach(key => {
-      if (sectionRefs[key].current) {
-        sectionRefs[key].current.dataset.section = key;
-        observer.observe(sectionRefs[key].current);
+    const refs = sectionRefs;
+    Object.keys(refs).forEach(key => {
+      if (refs[key].current) {
+        refs[key].current.dataset.section = key;
+        observer.observe(refs[key].current);
       }
     });
 
     return () => {
-      Object.keys(sectionRefs).forEach(key => {
-        if (sectionRefs[key].current) {
-          observer.unobserve(sectionRefs[key].current);
+      Object.keys(refs).forEach(key => {
+        if (refs[key].current) {
+          // eslint-disable-next-line react-hooks/exhaustive-deps
+          observer.unobserve(refs[key].current);
         }
       });
     };
@@ -139,7 +141,6 @@ const WritingsPage = ({ isDarkMode, setIsDarkMode }) => {
         setLoading(true);
         setError(null);
         
-        // Replace the mock data with actual API call
         const response = await articlesAPI.getUserArticles();
         setArticles(response);
         } catch (err) {
@@ -154,62 +155,46 @@ const WritingsPage = ({ isDarkMode, setIsDarkMode }) => {
     }, [user]);
 
 // Enhanced filtering and sorting logic with null safety
-const filteredAndSortedArticles = React.useMemo(() => {
+const filteredAndSortedArticles = useMemo(() => {
   if (!articles || articles.length === 0) return [];
 
   // Filter articles
   let filtered = articles.filter(article => {
-    // Null-safe search filter - search only in title
     const searchMatch = !searchTerm || 
       (article.title && article.title.toString().toLowerCase().includes(searchTerm.toLowerCase()));
 
-    // Status filter
     const statusMatch = statusFilter === 'all' || 
       (article.status && article.status.toLowerCase() === statusFilter.toLowerCase());
 
     return searchMatch && statusMatch;
   });
 
-  // Sort articles with proper handling of word_count and null values
+  // Sort articles
   filtered.sort((a, b) => {
     let aValue, bValue;
 
     switch (sortBy) {
       case 'word_count':
-        // Handle word_count with proper null/undefined checks
         aValue = a.word_count || a.wordCount || 0;
         bValue = b.word_count || b.wordCount || 0;
-        
-        // If word count doesn't exist, calculate it from content
-        if (aValue === 0 && a.content) {
-          aValue = a.content.trim().split(/\s+/).length;
-        }
-        if (bValue === 0 && b.content) {
-          bValue = b.content.trim().split(/\s+/).length;
-        }
         break;
-
       case 'title':
         aValue = (a.title || '').toLowerCase();
         bValue = (b.title || '').toLowerCase();
         break;
-
       case 'created_at':
         aValue = new Date(a.created_at || a.createdAt || 0);
         bValue = new Date(b.created_at || b.createdAt || 0);
         break;
-
       case 'updated_at':
         aValue = new Date(a.updated_at || a.updatedAt || a.created_at || a.createdAt || 0);
         bValue = new Date(b.updated_at || b.updatedAt || b.created_at || b.createdAt || 0);
         break;
-
       default:
         aValue = a[sortBy] || '';
         bValue = b[sortBy] || '';
     }
 
-    // Handle different data types
     if (typeof aValue === 'string' && typeof bValue === 'string') {
       return sortOrder === 'asc' 
         ? aValue.localeCompare(bValue)
@@ -222,7 +207,6 @@ const filteredAndSortedArticles = React.useMemo(() => {
         : bValue.getTime() - aValue.getTime();
     }
 
-    // For numbers and other types
     if (sortOrder === 'asc') {
       return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
     } else {
@@ -233,40 +217,39 @@ const filteredAndSortedArticles = React.useMemo(() => {
   return filtered;
 }, [articles, searchTerm, statusFilter, sortBy, sortOrder]);
 
-// Optional: Add a function to safely get word count
-const getWordCount = (article) => {
-  if (article.word_count || article.wordCount) {
-    return article.word_count || article.wordCount;
-  }
+const handleCreateNew = () => {
+  // This assumes you have a Write page where the user writes their article first.
+  // If you want to start a blank, pass blank data.
+  navigate('/submit', {
+    state: {
+      fromWritePage: true,
+      isEditing: false,
+      articleId: null,
+      formData: {
+        title: '',
+        content: '',
+        author: user ? `${user.first_name} ${user.last_name}` : 'Current User',
+        imageUrl: null,
+      }
+    }
+  });
+  };
   
-  if (article.content) {
-    return article.content.trim().split(/\s+/).filter(word => word.length > 0).length;
-  }
-  
-  return 0;
-};
-
-// Enhanced search function with debouncing (optional performance improvement)
-const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-
-useEffect(() => {
-  const timer = setTimeout(() => {
-    setDebouncedSearchTerm(searchTerm);
-  }, 300); // 300ms delay
-
-  return () => clearTimeout(timer);
-}, [searchTerm]);
-
-// Use debouncedSearchTerm instead of searchTerm in the filtering logic above
-// This prevents excessive filtering on every keystroke
-
-  // In WritingsPage.js, update the handleEdit function:
   const handleEdit = (articleId) => {
-    // Navigate to submit page with article ID as state
+    const article = articles.find(a => a.id === articleId);
+    if (!article) return;
+    if (!article || article.status !== 'draft') return;
     navigate('/submit', { 
       state: { 
-        articleId: articleId,
-        isEditing: true 
+        articleId: article.id,
+        isEditing: true,
+        fromWritePage: true,
+        formData: {
+          title: article.title || '',
+          content: article.content || '',
+          author: article.author || user ? `${user.first_name} ${user.last_name}` : 'Current User',
+          imageUrl: article.imageUrl || null,
+        }
       } 
     });
   };
@@ -282,7 +265,7 @@ useEffect(() => {
 
     try {
         setDeleteLoading(articleId);
-        await articlesAPI.delete(articleId); // Make sure this endpoint exists in your API
+        await articlesAPI.delete(articleId);
         setArticles(prev => prev.filter(article => article.id !== articleId));
     } catch (err) {
         alert('Failed to delete article. Please try again.');
@@ -295,10 +278,8 @@ useEffect(() => {
       const calculateWordCount = (text) => {
       if (!text || typeof text !== 'string') return 0;
       
-      // Remove HTML tags if present
       const plainText = text.replace(/<[^>]*>/g, ' ');
       
-      // Split by whitespace and filter out empty strings
       const words = plainText
         .trim()
         .split(/\s+/)
@@ -332,13 +313,8 @@ useEffect(() => {
   {
     label: 'Total Words',
     value: articles.reduce((sum, article) => {
-      // Try multiple fields that might contain the article content
       const wordCount = article.word_count || 
-                       calculateWordCount(article.content) || 
-                       calculateWordCount(article.body) || 
-                       calculateWordCount(article.text) ||
-                       calculateWordCount(article.excerpt) || 
-                       0;
+                       calculateWordCount(article.content) || 0;
       return sum + wordCount;
     }, 0).toLocaleString(),
     icon: <BookIcon />,
@@ -347,13 +323,6 @@ useEffect(() => {
   }
 ];
 
-
-  const handleToggleImageMode = () => {
-  setShowImages(prev => !prev);
-    };
-
-
-
   return (
     <Box sx={{ minHeight: '100vh', marginTop: '2rem', display: 'flex', flexDirection: 'column' }}>
       <Helmet>
@@ -361,19 +330,15 @@ useEffect(() => {
         <meta name="description" content="Manage and organize all your articles" />
       </Helmet>
 
-      {/* Header */}
       <Header isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
 
-      {/* Main Content */}
       <Box sx={{ flex: 1 }}>
         <Container maxWidth={false} sx={{ py: 4, marginTop: 5, px: 3 }}>
 
-{/* Two-Column Layout: Content + Analytics */}
       <div ref={sectionRefs.header}>
         <Fade in={visibleSections.header} timeout={800}>
           <Box sx={{ mb: 4 }}>
             <Grid container spacing={2} >
-              {/* LEFT COLUMN - Main Content */}
               <Grid item xs={12} lg={9} width={"53%"}>
                 <Paper
                   elevation={0}
@@ -509,13 +474,11 @@ useEffect(() => {
                     Transform your ideas into compelling stories. Track your writing journey, engage with your audience, and watch your creative impact flourish across every piece you craft.
                   </Typography>
 
-                  {/* Action Buttons */}
                   <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", position: "relative", zIndex: 2 }}>
                     <Button
                       variant="contained"
                       startIcon={<AddIcon />}
-                      component={Link}
-                      to="/submit"
+                      onClick={handleCreateNew}
                       sx={{
                         borderRadius: 3,
                         px: 3,
@@ -551,31 +514,10 @@ useEffect(() => {
                       Create New Article
                     </Button>
 
-                    <Button
-                      variant="outlined"
-                      sx={{
-                        borderRadius: 3,
-                        px: 3,
-                        py: 1,
-                        fontSize: "0.95rem",
-                        fontWeight: 600,
-                        textTransform: "none",
-                        borderColor: theme.palette.primary.main,
-                        color: theme.palette.primary.main,
-                        borderWidth: "2px",
-                        "&:hover": {
-                          transform: "translateY(-1px)",
-                          backgroundColor: `${theme.palette.primary.main}10`,
-                        },
-                      }}
-                    >
-                      View All Articles
-                    </Button>
                   </Box>
                 </Paper>
               </Grid>
 
-              {/* RIGHT COLUMN - Analytics Dashboard */}
               <Grid item xs={12} lg={3} width={"45%"} style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
                 <Paper
                   elevation={4}
@@ -607,7 +549,6 @@ useEffect(() => {
                     },
                   }}
                 >
-                  {/* Analytics Header */}
                   <Box sx={{ mb: 3, textAlign: "center" }}>
                     <Typography
                       variant="h4"
@@ -640,7 +581,6 @@ useEffect(() => {
                     </Typography>
                   </Box>
 
-                  {/* Key Metrics Grid */}
                   <Grid container spacing={2}>
                     {stats.map((stat, index) => (
                       <Grid item xs={6} key={index}>
@@ -731,8 +671,6 @@ useEffect(() => {
         </Fade>
       </div>
 
-
-{/* Enhanced Filters and Search */}
 <div ref={sectionRefs.content}>
   <Fade in={visibleSections.content} timeout={600}>
     <Box>
@@ -756,7 +694,6 @@ useEffect(() => {
         }
       }}>
         <Grid container spacing={3} alignItems="center">
-          {/* Search Field */}
           <Grid item xs={12} md={3} width={"40%"}>
             <TextField
               fullWidth
@@ -816,7 +753,6 @@ useEffect(() => {
             />
           </Grid>
 
-          {/* Status Filter */}
           <Grid item xs={12} md={2}>
             <FormControl fullWidth>
               <InputLabel sx={{ 
@@ -898,7 +834,6 @@ useEffect(() => {
             </FormControl>
           </Grid>
 
-          {/* Sort By */}
           <Grid item xs={12} md={3}>
             <FormControl fullWidth>
               <InputLabel sx={{ 
@@ -973,9 +908,6 @@ useEffect(() => {
             </FormControl>
           </Grid>
 
-
-
-          {/* Action Buttons */}
           <Grid item xs={12} md={2}>
             <Button
               fullWidth
@@ -1005,7 +937,6 @@ useEffect(() => {
           </Grid>
         </Grid>
 
-        {/* Filter Summary */}
         {(searchTerm || statusFilter !== 'all') && (
           <Box sx={{ 
             mt: 3, 
@@ -1064,7 +995,6 @@ useEffect(() => {
         )}
       </Paper>
 
-      {/* Articles Grid with improved filtering and sorting */}
       {loading ? (
         <Grid container spacing={4}>
           {[...Array(6)].map((_, index) => (
@@ -1124,8 +1054,7 @@ useEffect(() => {
               variant="contained"
               size="large"
               startIcon={<AddIcon />}
-              component={Link}
-              to="/submit"
+              onClick={handleCreateNew}
               sx={{
                 borderRadius: 3,
                 px: 4,
@@ -1169,7 +1098,6 @@ useEffect(() => {
         </Container>
       </Box>
 
-      {/* Footer */}
       <Footer />
     </Box>
   );

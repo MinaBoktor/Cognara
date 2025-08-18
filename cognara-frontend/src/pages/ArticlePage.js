@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link as RouterLink } from 'react-router-dom';
 import { articlesAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -122,6 +122,245 @@ export const ContentSection = styled(Box)(({ theme }) => ({
   },
 }));
 
+// Reading tracking hook
+const useReadingTracker = (article, user) => {
+  const [readingState, setReadingState] = useState({
+    scrollDepth: 0,
+    activeTimeSeconds: 0,
+    requiredTimeSeconds: 0,
+    isRead: false,
+    status: 'started'
+  });
+
+  const trackingRef = useRef({
+    startTime: Date.now(),
+    lastActiveTime: Date.now(),
+    lastUpdateTime: Date.now(), // Track when we last updated active time
+    isTabVisible: true,
+    isUserActive: false, // Start as false, set to true on first activity
+    maxScrollDepth: 0,
+    totalActiveTime: 0,
+    lastLogTime: 0,
+    hasCompletedReading: false // Track if we've already marked as completed
+  });
+
+  // Calculate estimated reading time (assuming ~200 words per minute)
+  const calculateReadingTime = useCallback((content) => {
+    if (!content) return 0;
+    const wordCount = content.replace(/<[^>]*>/g, '').split(/\s+/).length;
+    return Math.max(30, Math.ceil((wordCount / 200) * 60)); // Minimum 30 seconds
+  }, []);
+
+  // Track user activity with precise timing
+  const updateActivity = useCallback(() => {
+    const now = Date.now();
+    
+    // If user was previously inactive, start tracking from this moment
+    if (!trackingRef.current.isUserActive) {
+      trackingRef.current.lastUpdateTime = now;
+    } else {
+      // User was already active, add the time since last update
+      const timeSinceLastUpdate = now - trackingRef.current.lastUpdateTime;
+      
+      // Only count time if it's reasonable (not more than 5 seconds gap)
+      if (timeSinceLastUpdate <= 5000) {
+        trackingRef.current.totalActiveTime += timeSinceLastUpdate;
+      }
+      
+      trackingRef.current.lastUpdateTime = now;
+    }
+    
+    trackingRef.current.lastActiveTime = now;
+    trackingRef.current.isUserActive = true;
+  }, []);
+
+  // Calculate scroll depth
+  const updateScrollDepth = useCallback(() => {
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const windowHeight = window.innerHeight;
+    const documentHeight = Math.max(
+      document.body.scrollHeight,
+      document.body.offsetHeight,
+      document.documentElement.clientHeight,
+      document.documentElement.scrollHeight,
+      document.documentElement.offsetHeight
+    );
+
+    const scrollDepth = Math.min(100, (scrollTop + windowHeight) / documentHeight * 100);
+    trackingRef.current.maxScrollDepth = Math.max(trackingRef.current.maxScrollDepth, scrollDepth);
+    
+    return scrollDepth;
+  }, []);
+
+  // Check if reading completion criteria are met
+  const checkReadingCompletion = useCallback((scrollDepth, activeTime, requiredTime) => {
+    const scrollThreshold = scrollDepth >= 85;
+    const timeThreshold = activeTime >= (requiredTime * 0.6);
+    return scrollThreshold && timeThreshold;
+  }, []);
+
+  // Log reading progress to backend
+  const logReadingProgress = useCallback(async (forceLog = false, isCompletion = false) => {
+    if (!article || !user) return;
+
+    const now = Date.now();
+    const timeSinceLastLog = now - trackingRef.current.lastLogTime;
+    
+    // Only log every 10 seconds unless forced or completion
+    if (!forceLog && !isCompletion && timeSinceLastLog < 10000) return;
+
+    try {
+      const scrollDepth = trackingRef.current.maxScrollDepth;
+      const activeTime = Math.floor(trackingRef.current.totalActiveTime / 1000);
+      const requiredTime = calculateReadingTime(article.content);
+      
+      // Determine if article is "read" based on criteria
+      const isRead = checkReadingCompletion(scrollDepth, activeTime, requiredTime);
+      const status = isRead ? 'completed' : 'in_progress';
+
+      // Ensure all data is properly formatted and valid
+      const logData = {
+        user_id: parseInt(user.id),
+        article_id: parseInt(article.id),
+        status: status,
+        scroll_depth: Math.min(100.0, Math.max(0.0, scrollDepth)), // Keep as percentage (0-100)
+        active_time_seconds: Math.max(0, activeTime),
+        required_time_seconds: Math.max(0, requiredTime)
+      };
+
+      console.log('Logging reading progress:', logData);
+
+      await articlesAPI.logArticleRead(logData);
+
+      setReadingState({
+        scrollDepth,
+        activeTimeSeconds: activeTime,
+        requiredTimeSeconds: requiredTime,
+        isRead,
+        status
+      });
+
+      trackingRef.current.lastLogTime = now;
+
+      // Mark as completed if this is the first time reaching completion
+      if (isRead && !trackingRef.current.hasCompletedReading) {
+        trackingRef.current.hasCompletedReading = true;
+        console.log('Article marked as read!');
+      }
+
+    } catch (error) {
+      console.error('Failed to log reading progress:', error);
+      console.error('Error details:', error.response?.data);
+    }
+  }, [article, user, calculateReadingTime, checkReadingCompletion]);
+
+  // Update active time tracking with precise timing
+  const updateActiveTime = useCallback(() => {
+    if (!trackingRef.current.isTabVisible) return;
+
+    const now = Date.now();
+    
+    // If user is currently active, add time since last update
+    if (trackingRef.current.isUserActive) {
+      const timeSinceLastUpdate = now - trackingRef.current.lastUpdateTime;
+      
+      // Only count reasonable time gaps (not more than 2 seconds)
+      if (timeSinceLastUpdate <= 2000) {
+        trackingRef.current.totalActiveTime += timeSinceLastUpdate;
+      }
+      
+      trackingRef.current.lastUpdateTime = now;
+    }
+    
+    // Check for inactivity - if no activity for more than 3 seconds, mark as inactive
+    const timeSinceLastActivity = now - trackingRef.current.lastActiveTime;
+    if (timeSinceLastActivity > 3000) {
+      trackingRef.current.isUserActive = false;
+    }
+
+    // Check if user just completed reading and log immediately
+    if (!trackingRef.current.hasCompletedReading) {
+      const scrollDepth = trackingRef.current.maxScrollDepth;
+      const activeTime = Math.floor(trackingRef.current.totalActiveTime / 1000);
+      const requiredTime = calculateReadingTime(article?.content);
+      
+      if (checkReadingCompletion(scrollDepth, activeTime, requiredTime)) {
+        logReadingProgress(true, true); // Force immediate log on completion
+      }
+    }
+  }, [article, calculateReadingTime, checkReadingCompletion, logReadingProgress]);
+
+  useEffect(() => {
+    if (!article || !user) return;
+
+    // Initialize required reading time
+    const requiredTime = calculateReadingTime(article.content);
+    setReadingState(prev => ({ ...prev, requiredTimeSeconds: requiredTime }));
+
+    // Set up event listeners for activity tracking
+    const handleScroll = () => {
+      updateActivity();
+      const currentScrollDepth = updateScrollDepth();
+      
+      // Check for immediate completion on scroll if not already completed
+      if (!trackingRef.current.hasCompletedReading) {
+        const activeTime = Math.floor(trackingRef.current.totalActiveTime / 1000);
+        const requiredTime = calculateReadingTime(article.content);
+        
+        if (checkReadingCompletion(currentScrollDepth, activeTime, requiredTime)) {
+          logReadingProgress(true, true); // Force immediate log on completion
+        }
+      }
+    };
+
+    const handleMouseMove = updateActivity;
+    const handleKeyPress = updateActivity;
+    const handleClick = updateActivity;
+
+    // Tab visibility tracking
+    const handleVisibilityChange = () => {
+      trackingRef.current.isTabVisible = !document.hidden;
+      if (!document.hidden) {
+        trackingRef.current.lastActiveTime = Date.now();
+      }
+    };
+
+    // Set up intervals - more frequent updates for better precision
+    const activeTimeInterval = setInterval(updateActiveTime, 500); // Update every 500ms instead of 1000ms
+    const logInterval = setInterval(() => logReadingProgress(false), 10000);
+
+    // Add event listeners
+    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('keydown', handleKeyPress);
+    window.addEventListener('click', handleClick);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Initial scroll depth calculation
+    updateScrollDepth();
+
+    // Log initial state
+    logReadingProgress(true);
+
+    // Cleanup
+    return () => {
+      clearInterval(activeTimeInterval);
+      clearInterval(logInterval);
+      
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('keydown', handleKeyPress);
+      window.removeEventListener('click', handleClick);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+
+      // Final log on cleanup
+      logReadingProgress(true);
+    };
+  }, [article, user, updateActivity, updateScrollDepth, updateActiveTime, logReadingProgress, calculateReadingTime, checkReadingCompletion]);
+
+  return readingState;
+};
+
 const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
   const { id } = useParams();
   const { user } = useAuth();
@@ -135,6 +374,9 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
   const [commentError, setCommentError] = useState(null);
   const [newComment, setNewComment] = useState('');
   const theme = useTheme();
+
+  // Use reading tracker
+  const readingState = useReadingTracker(article, user);
 
   const getAuthorName = (article) => {
     const capitalize = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
@@ -193,7 +435,7 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
         setCommentsCount(commentsResponse.data.count || 0);
         setNewComment('');
       }
-    } catch (err) { // FIX: The period has been removed from this line
+    } catch (err) {
       console.error('Comment submission error:', err);
 
       if (err.response?.status === 403 || err.response?.status === 401) {
@@ -242,6 +484,30 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
 
       <ArticleContainer maxWidth="false">
         <MainContent>
+          {/* Reading progress indicator - only shows scroll progress, not completion status */}
+          {user && (
+            <Box
+              sx={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 4,
+                backgroundColor: 'rgba(0,0,0,0.1)',
+                zIndex: 1000,
+              }}
+            >
+              <Box
+                sx={{
+                  height: '100%',
+                  width: `${readingState.scrollDepth}%`,
+                  backgroundColor: 'primary.main',
+                  transition: 'width 0.3s ease',
+                }}
+              />
+            </Box>
+          )}
+
           <ArticleHeader>
             <ArticleTitle variant="h1" component="h1">
               {article.title}
@@ -256,6 +522,7 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
                 size="small"
                 variant="outlined"
               />
+              {/* Removed reading progress chip - users shouldn't see internal calculations */}
             </MetadataSection>
 
             {article.tags && (
@@ -290,7 +557,6 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
               __html: DOMPurify.sanitize(article.content || '<p>No content available.</p>')
             }}
           />
-
 
           <Box sx={{
             marginTop: theme.spacing(8),

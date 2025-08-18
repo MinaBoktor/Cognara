@@ -129,7 +129,7 @@ function App() {
               <Route path="/signup" element={<GuestOnlyRoute> <Layout isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><SignUpPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout> </GuestOnlyRoute>} />
               <Route path="/forgot-password" element={<GuestOnlyRoute> <ForgetPassword isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </GuestOnlyRoute>} />
               <Route path="/confirm-email" element={<GuestOnlyRoute> <ConfirmEmail isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </GuestOnlyRoute>} />
-              <Route path="/article/:id" element={<Layout showNewsletter={false} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode}><ArticlePage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout>} />
+              <Route path="/article/:id" element={<Layout showNewsletter={false} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} ><ArticlePage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></Layout>} />
               <Route path="/write" element={<ProtectedRoute> <WritingsPage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></ProtectedRoute>} />
               <Route path="/submit" element={<ProtectedRoute> <SubmitArticlePage isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /></ProtectedRoute>} />
               <Route path="/admin" element={<ProtectedRoute adminOnly> <AdminDashboard isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> </ProtectedRoute>} />

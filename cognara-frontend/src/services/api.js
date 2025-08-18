@@ -189,7 +189,24 @@ export const articlesAPI = {
       
       throw error;
     }
-  }
+  },
+  logArticleRead: async (readData) => {
+    try {
+      // Ensure CSRF token is available
+      await fetchCSRFToken();
+
+      const response = await apiClient.post('log_read', readData);
+      return response.data;
+    } catch (error) {
+      console.error('Error logging article read:', error);
+
+      if (error.response?.status === 401) {
+        window.location.href = '/login';
+      }
+      throw error;
+    }
+  },
+  
 };
 
 // Authentication API

@@ -769,3 +769,93 @@ def change_status(request):
 
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+@require_frontend_token
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def log_article_read(request):
+    if request.method == "POST":
+        try:
+            # Add detailed logging to debug the issue
+            print(f"Raw request data: {request.data}")
+            print(f"Request content type: {request.content_type}")
+            
+            user_id = request.data.get("user_id")
+            article_id = request.data.get("article_id")
+            status = request.data.get("status", "started")
+            scroll_depth = request.data.get("scroll_depth", 0.0)
+            active_time_seconds = request.data.get("active_time_seconds", 0)
+            required_time_seconds = request.data.get("required_time_seconds", 0)
+
+            # Validate required fields
+            if not user_id:
+                print("Missing user_id")
+                return JsonResponse({"success": False, "error": "user_id is required"}, status=400)
+            
+            if not article_id:
+                print("Missing article_id")
+                return JsonResponse({"success": False, "error": "article_id is required"}, status=400)
+
+            # Validate data types
+            try:
+                user_id = int(user_id)
+                article_id = int(article_id)
+                scroll_depth = float(scroll_depth)
+                active_time_seconds = int(active_time_seconds)
+                required_time_seconds = int(required_time_seconds)
+            except (ValueError, TypeError) as e:
+                print(f"Data type conversion error: {e}")
+                return JsonResponse({"success": False, "error": f"Invalid data types: {str(e)}"}, status=400)
+
+            # Validate ranges - scroll_depth should be 0-100 (percentage) based on your schema
+            if not (0.0 <= scroll_depth <= 100.0):
+                print(f"Invalid scroll_depth: {scroll_depth}")
+                return JsonResponse({"success": False, "error": "scroll_depth must be between 0.0 and 100.0"}, status=400)
+            
+            if active_time_seconds < 0:
+                print(f"Invalid active_time_seconds: {active_time_seconds}")
+                return JsonResponse({"success": False, "error": "active_time_seconds must be non-negative"}, status=400)
+            
+            if required_time_seconds < 0:
+                print(f"Invalid required_time_seconds: {required_time_seconds}")
+                return JsonResponse({"success": False, "error": "required_time_seconds must be non-negative"}, status=400)
+
+            # Validate status
+            valid_statuses = ["started", "in_progress", "completed"]
+            if status not in valid_statuses:
+                print(f"Invalid status: {status}")
+                return JsonResponse({"success": False, "error": f"status must be one of: {valid_statuses}"}, status=400)
+
+            print(f"Validated data - user_id: {user_id}, article_id: {article_id}, status: {status}, scroll_depth: {scroll_depth}, active_time: {active_time_seconds}, required_time: {required_time_seconds}")
+
+            # Prepare data for Supabase
+            upsert_data = {
+                "user_id": user_id,
+                "article_id": article_id,
+                "status": status,
+                "scroll_depth": scroll_depth,  # Keep as percentage (0-100)
+                "active_time_seconds": active_time_seconds,
+                "required_time_seconds": required_time_seconds
+            }
+
+            print(f"Attempting upsert to Supabase: {upsert_data}")
+
+            # Use proper upsert with on_conflict parameter to handle the unique constraint
+            response = supabase.table("article_reads").upsert(
+                upsert_data,
+                on_conflict="user_id,article_id"  # Specify the conflict columns
+            ).execute()
+
+            print(f"Supabase response: {response}")
+
+            return JsonResponse({"success": True, "data": response.data})
+
+        except Exception as e:
+            print(f"Exception in log_article_read: {e}")
+            print(f"Exception type: {type(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            return JsonResponse({"success": False, "error": str(e)}, status=400)
+
+    return JsonResponse({"success": False, "error": "Invalid request method"}, status=405)

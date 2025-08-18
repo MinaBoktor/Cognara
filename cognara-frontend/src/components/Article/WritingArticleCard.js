@@ -41,6 +41,7 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ArticleIcon from '@mui/icons-material/Article';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import CancelIcon from '@mui/icons-material/Cancel';
+import LockIcon from '@mui/icons-material/Lock';
 
 const WritingArticleCard = ({ 
   article, 
@@ -61,8 +62,6 @@ const WritingArticleCard = ({
   const [contentAnalysis, setContentAnalysis] = useState(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
-
-
 
   const handleCardClick = () => {
     if (article.status === 'published') {
@@ -138,8 +137,6 @@ const WritingArticleCard = ({
       setIsPublishing(false);
     }
   };
-
-  
 
   const handleNotificationClose = (event, reason) => {
     if (reason === 'clickaway') {
@@ -267,6 +264,9 @@ const WritingArticleCard = ({
 
   const hasImage = imageUrl && showImages;
   const maxlines = hasImage ? 2 : 12;
+
+  // Check if editing is disabled (pending review)
+  const isEditingDisabled = article?.status === 'pending_review';
 
   // Get the appropriate action button based on article status
   const getActionButton = () => {
@@ -522,24 +522,27 @@ const WritingArticleCard = ({
 
             {/* Action Buttons */}
             <Stack direction="row" spacing={1}>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<EditIcon />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(article.id);
-                }}
-                disabled={isPublishing}
-                sx={{
-                  flex: 1,
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  borderRadius: 2,
-                }}
-              >
-                Edit
-              </Button>
+              {/* Edit Button - Only show when not pending review */}
+              {!isEditingDisabled && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<EditIcon />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(article.id);
+                  }}
+                  disabled={isPublishing}
+                  sx={{
+                    flex: 1,
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    borderRadius: 2,
+                  }}
+                >
+                  Edit
+                </Button>
+              )}
 
               {getActionButton()}
 

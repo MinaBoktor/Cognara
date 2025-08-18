@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef, useContext } from 'react';
-import { useLocation } from 'react-router-dom';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Bold from '@tiptap/extension-bold';
@@ -50,7 +50,7 @@ import { CloudUpload, Delete } from '@mui/icons-material';
 
 import {
   FormatBold, FormatItalic, FormatUnderlined, FormatListBulleted, FormatListNumbered, 
-  Link as LinkIcon, // Change this line
+  Link as LinkIcon,
   FormatAlignLeft, FormatAlignCenter, FormatAlignRight, FormatAlignJustify,
   Publish as PublishIcon, Save as SaveIcon, Preview as PreviewIcon,
   Fullscreen, FullscreenExit, Settings as SettingsIcon, AutoAwesome,
@@ -67,10 +67,10 @@ import {
   ContentSection
 } from './ArticlePage';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import LogoutIcon from '@mui/icons-material/Logout';
 import HelpIcon from '@mui/icons-material/Help';
 
+const AUTOSAVE_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
   const theme = useTheme();
@@ -83,68 +83,118 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
   const { state } = location;
   const editingArticleId = state?.articleId;
   const isEditing = state?.isEditing;
-
-  // Enhanced localStorage keys for different state pieces
-  const STORAGE_KEYS = {
-    DRAFT: 'draft_article',
-    EDITOR_STATE: 'editor_state_settings',
-    UI_STATE: 'ui_state_settings',
-    FORM_DATA: 'form_data_state',
-    ARTICLE_ID: 'current_article_id',
-    LAST_SAVED: 'last_saved_timestamp'
+  const fromWritePage = state?.fromWritePage;
+  const [isPublishing, setIsPublishing] = useState(false);
+  const articleStatus = state?.formData?.status || 'draft';
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const initialFormData = state?.formData || {
+    title: '',
+    content: '',
+    author: user ? `${user.first_name} ${user.last_name}` : 'Current User',
+    imageUrl: null,
   };
 
-  const loadFromStorage = (key, defaultValue = null) => {
-    try {
-      const stored = localStorage.getItem(key);
-      return stored ? JSON.parse(stored) : defaultValue;
-    } catch (error) {
-      console.warn('Failed to load from localStorage:', error);
-      return defaultValue;
+  // Redirect if not from write page
+  useEffect(() => {
+    if (!fromWritePage || !(articleStatus === 'draft' || articleStatus === undefined)) {
+      navigate('/write');
     }
-  };
+  }, [fromWritePage, articleStatus, navigate]);
 
-    const [editorState, setEditorState] = useState(() => {
-    const saved = loadFromStorage(STORAGE_KEYS.EDITOR_STATE);
-    return saved || {
-      isFullscreen: false, 
-      fontSize: 18, 
-      lineHeight: 1.7, 
-      fontFamily: 'Inter', 
-      enableAutoSave: true, 
-      saveInterval: 30000
-    };
+  // State management
+  const [formData, setFormData] = useState(initialFormData);
+  const [editorState, setEditorState] = useState({
+    isFullscreen: false,
+    fontSize: 18,
+    lineHeight: 1.7,
+    fontFamily: 'Inter',
+    enableAutoSave: true,
+    saveInterval: AUTOSAVE_INTERVAL,
   });
-
-
-
-  const [formData, setFormData] = useState(() => {
-    const saved = loadFromStorage(STORAGE_KEYS.FORM_DATA);
-    return saved || {
-      title: '', 
-      content: '',
-      author: 'Current User',
-      imageUrl: null
-    };
+  const [articleImage, setArticleImage] = useState(state.formData.imageUrl);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [ui, setUi] = useState({
+    settingsOpen: false,
+    snackbarOpen: false,
+    snackbarMessage: '',
+    snackbarSeverity: 'info',
+    previewMode: false,
   });
+  const [status, setStatus] = useState({ message: '', type: '', progress: 0 });
+  const [stats, setStats] = useState({
+    wordCount: 0, charCount: 0, sentenceCount: 0, paragraphCount: 0, readingTime: 0,
+    readabilityScore: 0, engagement: 0, seoScore: 0, complexWords: 0, passiveVoice: 0, transitionWords: 0, subheadings: 0, images: 0, links: 0,
+  });
+  const [aiSuggestions, setAiSuggestions] = useState([]);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [articleId, setArticleId] = useState(editingArticleId || -1);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
+  const autoSaveRef = useRef(null);
 
 
 
-  // Single Tiptap editor instance
+  // Fetch the existing image when editing
+  useEffect(() => {
+    if (isEditing && articleId) {
+      setImageLoading(true);
+      articlesAPI.getImages(articleId)
+        .then(res => {
+          const firstImage = res.data?.images?.[0];
+          if (firstImage?.url) {
+            setArticleImage(firstImage.url);
+            setFormData(prev => ({ ...prev, imageUrl: firstImage.url }));
+          }
+        })
+        .catch(err => {
+          console.warn("Failed to fetch article images", err);
+        })
+        .finally(() => setImageLoading(false));
+    } else {
+      setArticleImage(initialFormData.imageUrl);
+    }
+  }, [isEditing, articleId, initialFormData.imageUrl]);
+
+  useEffect(() => {
+    setHasUnsavedChanges(
+      formData.title !== (state?.formData?.title || '') ||
+      formData.content !== (state?.formData?.content || '')
+    );
+  }, [formData, state]);
+
+  // Alert on refresh/leave if unsaved
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [hasUnsavedChanges]);
+
+  // Editor setup
   const editor = useEditor({
-  extensions: [
-    StarterKit,
-    Bold,
-    Italic,
-    Underline,
-    BulletList,
-    OrderedList,
-    ListItem,
-    TiptapLink.configure({  // Changed from Link to TiptapLink
-      openOnClick: false,
-      HTMLAttributes: {
-        class: 'link-style',
-      },
+    extensions: [
+      StarterKit,
+      Bold,
+      Italic,
+      Underline,
+      BulletList,
+      OrderedList,
+      ListItem,
+      TiptapLink.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          class: 'link-style',
+        },
       }),
       TextAlign.configure({ 
         types: ['heading', 'paragraph'],
@@ -160,12 +210,11 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     content: formData.content,
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
-      setFormData(prev => {
-        const updated = { ...prev, content: html };
-        // Save form data to localStorage
-        saveToStorage(STORAGE_KEYS.FORM_DATA, updated);
-        return updated;
-      });
+      setFormData(prev => ({
+        ...prev,
+        content: html
+      }));
+      setHasUnsavedChanges(true);
       analyzeContent(html);
     },
     editorProps: {
@@ -183,142 +232,54 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     },
   });
 
-    // Add useEffect to load article data when editing
+    // Autosave function
+  const performAutoSave = useCallback(async () => {
+    if (!editor || (!formData.title.trim() && !formData.content.trim())) return;
+    try {
+      setIsSubmitting(true);
+      const result = await submitArticle({
+        ...formData,
+        content: editor.getHTML()
+      }, articleId, true);
+      if (result.article_id) setArticleId(Number(result.article_id));
+      setLastSaved(new Date());
+      setHasUnsavedChanges(false);
+      showSnackbar('Auto-saved as draft', 'success');
+    } catch (error) {
+      console.error('Auto-save failed:', error);
+      showSnackbar('Auto-save failed', 'warning');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [formData, articleId, editor]);
+
+  // Autosave every 5 min
   useEffect(() => {
-    const loadArticleForEditing = async () => {
-      if (isEditing && editingArticleId) {
-        try {
-          const articleData = await articlesAPI.getArticleById(editingArticleId);
-          
-          // Set form data with the fetched article
-          setFormData({
-            title: articleData.title || '',
-            content: articleData.content || '',
-            author: articleData.author || 'Current User',
-            imageUrl: articleData.imageUrl || null,
-            // Add any other fields from articleData
-          });
-          
-          // Set the article ID
-          setArticleId(editingArticleId);
-          
-          // If there's an image URL, set it
-          if (articleData.imageUrl) {
-            setArticleImage(articleData.imageUrl);
-          }
-          
-          // Set editor content if editor is available
-          if (editor) {
-            editor.commands.setContent(articleData.content || '');
-          }
-          
-        } catch (error) {
-          console.error('Failed to load article for editing:', error);
-          showSnackbar('Failed to load article for editing', 'error');
+    if (editorState.enableAutoSave) {
+      autoSaveRef.current = setInterval(() => {
+        if (hasUnsavedChanges) {
+          performAutoSave();
         }
-      }
-    };
-    
-    loadArticleForEditing();
-  }, [isEditing, editingArticleId, editor]);
-
-  const handleProfileMenuOpen = (event) => {
-    setProfileAnchorEl(event.currentTarget);
-  };
-
-  const handleProfileMenuClose = () => {
-    setProfileAnchorEl(null);
-  };
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-      navigate('/');
-      handleProfileMenuClose();
-    } catch (error) {
-      console.error('Logout failed:', error);
+      }, AUTOSAVE_INTERVAL);
+      return () => clearInterval(autoSaveRef.current);
     }
-  };
+  }, [editorState.enableAutoSave, AUTOSAVE_INTERVAL, hasUnsavedChanges, performAutoSave]);
 
+  // Helper: Snackbar
+  const showSnackbar = (message, severity = 'info') => setUi(prev => ({
+    ...prev,
+    snackbarOpen: true,
+    snackbarMessage: message,
+    snackbarSeverity: severity
+  }));
 
-  const FONT_OPTIONS = [
-    { value: 'Inter', label: 'Inter' },
-    { value: 'Roboto', label: 'Roboto' },
-    { value: 'Open Sans', label: 'Open Sans' },
-    { value: 'Merriweather', label: 'Merriweather' },
-    { value: 'Georgia', label: 'Georgia' },
-    { value: 'Times New Roman', label: 'Times New Roman' },
-  ];
-
-  const [articleImage, setArticleImage] = useState(null);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-
-
-  // Helper functions for localStorage management
-  const saveToStorage = (key, data) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(data));
-    } catch (error) {
-      console.warn('Failed to save to localStorage:', error);
-    }
-  };
-
-
-  // Initialize state from localStorage with proper defaults
-  const [hasLoadedInitialDraft, setHasLoadedInitialDraft] = useState(false);
-
-
-
-
-  const [ui, setUi] = useState(() => {
-    const saved = loadFromStorage(STORAGE_KEYS.UI_STATE);
-    return saved || { 
-      settingsOpen: false, 
-      snackbarOpen: false, 
-      snackbarMessage: '', 
-      snackbarSeverity: 'info', 
-      previewMode: false 
-    };
-  });
-
-  const [status, setStatus] = useState({ message: '', type: '', progress: 0 });
-  const [stats, setStats] = useState({
-    wordCount: 0, charCount: 0, sentenceCount: 0, paragraphCount: 0, readingTime: 0,
-    readabilityScore: 0, engagement: 0, seoScore: 0, complexWords: 0, passiveVoice: 0, transitionWords: 0, subheadings: 0, images: 0, links: 0,
-  });
-  const [aiSuggestions, setAiSuggestions] = useState([]);
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  const [articleId, setArticleId] = useState(() => {
-    const savedId = loadFromStorage(STORAGE_KEYS.ARTICLE_ID);
-    return savedId ? Number(savedId) : -1;
-  });
-  
-  const [lastSaved, setLastSaved] = useState(() => {
-    const savedTimestamp = loadFromStorage(STORAGE_KEYS.LAST_SAVED);
-    return savedTimestamp ? new Date(savedTimestamp) : null;
-  });
-  
-  const autoSaveRef = useRef(null);
-
-  const handleThemeToggle = () => {
-    setIsDarkMode(!isDarkMode);
-  };
-
-  // API Configuration
+  // API
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api';
 
-  // API call function
   const submitArticle = async (articleData, articleId = -1, isDraft = false) => {
     try {
       const response = await articlesAPI.submit(articleData, articleId, isDraft);
-      
-      if (response.error) {
-        throw new Error(response.error || 'Failed to submit article');
-      }
-      
+      if (response.error) throw new Error(response.error || 'Failed to submit article');
       return response;
     } catch (error) {
       console.error('API Error:', error);
@@ -326,8 +287,7 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     }
   };
 
-
-
+  // Image upload/delete
   const handleDeleteImage = async () => {
     if (!articleId || articleId === -1) {
       showSnackbar('No article associated with this image', 'warning');
@@ -335,70 +295,48 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     }
 
     try {
-      setIsUploadingImage(true);
       await articlesAPI.deleteImage(articleId);
-      
       setArticleImage(null);
-      setFormData(prev => {
-        const updated = { ...prev, imageUrl: null };
-        saveToStorage(STORAGE_KEYS.FORM_DATA, updated);
-        return updated;
-      });
-      
+      setFormData(prev => ({ ...prev, imageUrl: null }));
       showSnackbar('Image deleted successfully', 'success');
     } catch (error) {
       console.error('Failed to delete image:', error);
       showSnackbar(`Failed to delete image: ${error.message}`, 'error');
-    } finally {
-      setIsUploadingImage(false);
     }
   };
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    
-    // Validate file type and size
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     if (!validTypes.includes(file.type)) {
       showSnackbar('Please select a valid image file (JPEG, PNG, GIF, WebP)', 'error');
       e.target.value = '';
       return;
     }
-    
-    // Check file size (e.g., max 5MB)
     const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
       showSnackbar(`Image size must be less than ${maxSize / (1024 * 1024)}MB`, 'error');
       e.target.value = '';
       return;
     }
-    
     try {
-      setIsUploadingImage(true);
-      
       let uploadArticleId = articleId;
-      
       // For new articles, create a draft first
       if (articleId === -1) {
         if (!formData.title?.trim()) {
           showSnackbar('Please add a title before uploading images', 'warning');
           return;
         }
-        
         try {
           const draftResult = await submitArticle({
             ...formData,
             content: editor ? editor.getHTML() : formData.content
           }, -1, true);
-          
           if (draftResult?.article_id) {
             uploadArticleId = Number(draftResult.article_id);
             setArticleId(uploadArticleId);
-            saveToStorage(STORAGE_KEYS.ARTICLE_ID, uploadArticleId);
-            
-            const now = new Date();
-            setLastSaved(now);
+            setLastSaved(new Date());
           } else {
             throw new Error('Failed to create draft - no article ID returned');
           }
@@ -408,149 +346,53 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
           return;
         }
       }
-      
       // Upload the image
       const result = await articlesAPI.uploadImage(uploadArticleId, file);
-      
       if (result?.url) {
         setArticleImage(result.url);
-        setFormData(prev => {
-          const updated = { ...prev, imageUrl: result.url };
-          saveToStorage(STORAGE_KEYS.FORM_DATA, updated);
-          return updated;
-        });
+        setFormData(prev => ({ ...prev, imageUrl: result.url }));
         showSnackbar('Image uploaded successfully', 'success');
       } else {
         throw new Error('Upload failed - no URL returned');
       }
-      
     } catch (error) {
-      console.error('Image upload error:', error);
-      
-      // More specific error handling
       let errorMessage = 'Failed to upload image';
-      
-      if (error.response?.status === 413) {
-        errorMessage = 'Image file is too large';
-      } else if (error.response?.status === 415) {
-        errorMessage = 'Unsupported image format';
-      } else if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
+      if (error.response?.status === 413) errorMessage = 'Image file is too large';
+      else if (error.response?.status === 415) errorMessage = 'Unsupported image format';
+      else if (error.response?.data?.error) errorMessage = error.response.data.error;
+      else if (error.message) errorMessage = error.message;
       showSnackbar(errorMessage, 'error');
     } finally {
-      setIsUploadingImage(false);
-      // Clear the file input to allow re-uploading the same file
-      if (e.target) {
-        e.target.value = '';
-      }
+      if (e.target) e.target.value = '';
     }
   };
 
-  // Enhanced save draft function that preserves all state
+  // Save draft
   const saveDraft = useCallback(async () => {
     if (!editor) return;
-    
-    const currentContent = editor.getHTML();
-    const draftData = {
-      title: formData.title,
-      content: currentContent,
-      articleId,
-      timestamp: Date.now(),
-    };
-    
-    saveToStorage(STORAGE_KEYS.DRAFT, draftData);
-    saveToStorage(STORAGE_KEYS.FORM_DATA, { ...formData, content: currentContent });
-    saveToStorage(STORAGE_KEYS.ARTICLE_ID, articleId);
+    try {
+      setIsSubmitting(true);
+      const result = await submitArticle({
+        ...formData,
+        content: editor.getHTML()
+      }, articleId, true);
+      if (result.article_id) setArticleId(Number(result.article_id));
+      setLastSaved(new Date());
+      setHasUnsavedChanges(false);
+      showSnackbar('Draft saved successfully!', 'success');
+      setStatus({ message: 'Draft saved successfully!', type: 'success', progress: 100 });
+    } catch (error) {
+      showSnackbar(`Failed to save draft: ${error.message}`, 'error');
+      setStatus({ message: 'Failed to save draft', type: 'error', progress: 0 });
+    } finally {
+      setTimeout(() => setStatus({ message: '', type: '', progress: 0 }), 3000);
+      setIsSubmitting(false);
+    }
   }, [formData, articleId, editor]);
 
-  // Load initial draft and all state from localStorage
-  useEffect(() => {
-    if (editor && !hasLoadedInitialDraft) {
-      // Load draft content
-      const saved = loadFromStorage(STORAGE_KEYS.DRAFT);
-      if (saved) {
-        try {
-          const { title, content, articleId: savedId } = saved;
-          if (title && title !== formData.title) {
-            setFormData(prev => ({ ...prev, title }));
-          }
-          if (content && content !== editor.getHTML()) {
-            editor.commands.setContent(content);
-          }
-          if (savedId !== undefined && savedId !== articleId) {
-            setArticleId(savedId);
-            saveToStorage(STORAGE_KEYS.ARTICLE_ID, savedId);
-          }
-        } catch (e) {
-          console.error('Failed to parse saved draft', e);
-        }
-      }
-      
-      setHasLoadedInitialDraft(true);
-    }
-  }, [editor, hasLoadedInitialDraft, formData.title, articleId]);
 
-  // Auto-save with enhanced state persistence
-  useEffect(() => {
-    if (!editor || !hasLoadedInitialDraft) return;
 
-    const timer = setTimeout(() => {
-      saveDraft();
-    }, 500);
-    
-    return () => clearTimeout(timer);
-  }, [formData.title, saveDraft, editor, hasLoadedInitialDraft]);
-
-  // Persist formData changes immediately
-  useEffect(() => {
-    if (hasLoadedInitialDraft) {
-      saveToStorage(STORAGE_KEYS.FORM_DATA, formData);
-    }
-  }, [formData, hasLoadedInitialDraft]);
-
-  // Persist editorState changes
-  useEffect(() => {
-    saveToStorage(STORAGE_KEYS.EDITOR_STATE, editorState);
-  }, [editorState]);
-
-  // Persist articleId changes
-  useEffect(() => {
-    saveToStorage(STORAGE_KEYS.ARTICLE_ID, articleId);
-  }, [articleId]);
-
-  // Persist lastSaved changes
-  useEffect(() => {
-    if (lastSaved) {
-      saveToStorage(STORAGE_KEYS.LAST_SAVED, lastSaved.getTime());
-    }
-  }, [lastSaved]);
-
-  // Enhanced performAutoSave function
-  const performAutoSave = useCallback(async () => {
-    if (!editor || !hasLoadedInitialDraft) return;
-    
-    const currentContent = editor.getHTML();
-    if (formData.title.trim() || currentContent.trim()) {
-      try {
-        await submitArticle({
-          ...formData,
-          content: currentContent
-        }, articleId, true);
-        const now = new Date();
-        setLastSaved(now);
-        showSnackbar('Auto-saved as draft', 'success');
-      } catch (error) {
-        console.error('Auto-save failed:', error);
-        showSnackbar('Auto-save failed', 'warning');
-      }
-    }
-  }, [formData, articleId, editor, hasLoadedInitialDraft]);
-
-  // Content Analysis
+  // Content analysis (unchanged)
   const countSyllables = (word) => {
     return word
       .toLowerCase()
@@ -559,7 +401,6 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
       .replace(/[aeiouy]{2,}/g, 'a')
       .match(/[aeiouy]/g)?.length || 1;
   };
-
   const analyzeContent = useCallback((content) => {
     const text = content.replace(/<[^>]*>/g, '');
     const words = text.trim().split(/\s+/).filter(word => word.length > 0);
@@ -613,78 +454,78 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     setAiSuggestions(suggestions);
   };
 
-  // Auto-save
+  // Keyboard shortcuts
   useEffect(() => {
-    if (editorState.enableAutoSave && hasLoadedInitialDraft && (formData.title.trim() || formData.content.trim())) {
-      // Clear existing interval
-      if (autoSaveRef.current) {
-        clearInterval(autoSaveRef.current);
-      }
-      
-      // Set new interval
-      autoSaveRef.current = setInterval(performAutoSave, editorState.saveInterval);
-    } else if (autoSaveRef.current) {
-      clearInterval(autoSaveRef.current);
-    }
-
-    return () => {
-      if (autoSaveRef.current) {
-        clearInterval(autoSaveRef.current);
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && editor) {
+        switch (e.key.toLowerCase()) {
+          case 'b': 
+            e.preventDefault();
+            editor.chain().focus().toggleBold().run();
+            break;
+          case 'i': 
+            e.preventDefault();
+            editor.chain().focus().toggleItalic().run();
+            break;
+          case 'u': 
+            e.preventDefault();
+            editor.chain().focus().toggleUnderline().run();
+            break;
+          case 's':
+            e.preventDefault();
+            saveDraft();
+            break;
+          default: 
+            break;
+        }
       }
     };
-  }, [editorState.enableAutoSave, editorState.saveInterval, performAutoSave, hasLoadedInitialDraft, formData.title, formData.content]);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [editor, saveDraft]);
 
-  // Snackbar
-  const showSnackbar = (message, severity = 'info') => setUi(prev => ({ ...prev, snackbarOpen: true, snackbarMessage: message, snackbarSeverity: severity }));
+  // Title change
+  const handleTitleChange = (e) => {
+    setFormData(prev => ({
+      ...prev,
+      title: e.target.value
+    }));
+    setHasUnsavedChanges(true);
+  };
 
-  // Improved toolbar actions - preserve selection and don't auto-clear
+  // Toolbar actions
   const formatActions = [
     { 
       icon: FormatBold, 
       label: 'Bold', 
-      action: () => {
-        if (!editor) return;
-        editor.chain().focus().toggleBold().run();
-      }, 
+      action: () => editor?.chain().focus().toggleBold().run(), 
       shortcut: 'Ctrl+B',
       isActive: editor?.isActive('bold')
     },
     { 
       icon: FormatItalic, 
       label: 'Italic', 
-      action: () => {
-        if (!editor) return;
-        editor.chain().focus().toggleItalic().run();
-      }, 
+      action: () => editor?.chain().focus().toggleItalic().run(), 
       shortcut: 'Ctrl+I',
       isActive: editor?.isActive('italic')
     },
     { 
       icon: FormatUnderlined, 
       label: 'Underline', 
-      action: () => {
-        if (!editor) return;
-        editor.chain().focus().toggleUnderline().run();
-      }, 
+      action: () => editor?.chain().focus().toggleUnderline().run(), 
       shortcut: 'Ctrl+U',
       isActive: editor?.isActive('underline')
     },
     { 
       icon: FormatListBulleted, 
       label: 'Bullet List', 
-      action: () => {
-        if (!editor) return;
-        editor.chain().focus().toggleBulletList().run();
-      },
+      action: () => editor?.chain().focus().toggleBulletList().run(),
       isActive: editor?.isActive('bulletList')
     },
     { 
       icon: FormatListNumbered, 
       label: 'Numbered List', 
-      action: () => {
-        if (!editor) return;
-        editor.chain().focus().toggleOrderedList().run();
-      },
+      action: () => editor?.chain().focus().toggleOrderedList().run(),
       isActive: editor?.isActive('orderedList')
     },
     { 
@@ -697,7 +538,6 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
           showSnackbar('Select some text first', 'warning');
           return;
         }
-        // Store the current selection
         const previousUrl = editor.getAttributes('link').href;
         setLinkUrl(previousUrl || '');
         setLinkDialogOpen(true);
@@ -708,42 +548,107 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
     { 
       icon: FormatAlignLeft, 
       label: 'Align Left', 
-      action: () => {
-        if (!editor) return;
-        editor.chain().focus().setTextAlign('left').run();
-      },
+      action: () => editor?.chain().focus().setTextAlign('left').run(),
       isActive: editor?.isActive({ textAlign: 'left' })
     },
     { 
       icon: FormatAlignCenter, 
       label: 'Align Center', 
-      action: () => {
-        if (!editor) return;
-        editor.chain().focus().setTextAlign('center').run();
-      },
+      action: () => editor?.chain().focus().setTextAlign('center').run(),
       isActive: editor?.isActive({ textAlign: 'center' })
     },
     { 
       icon: FormatAlignRight, 
       label: 'Align Right', 
-      action: () => {
-        if (!editor) return;
-        editor.chain().focus().setTextAlign('right').run();
-      },
+      action: () => editor?.chain().focus().setTextAlign('right').run(),
       isActive: editor?.isActive({ textAlign: 'right' })
     },
     { 
       icon: FormatAlignJustify, 
       label: 'Justify', 
-      action: () => {
-        if (!editor) return;
-        editor.chain().focus().setTextAlign('justify').run();
-      },
+      action: () => editor?.chain().focus().setTextAlign('justify').run(),
       isActive: editor?.isActive({ textAlign: 'justify' })
     },
   ];
 
-  // Save draft function
+  const handlePublish = async () => {
+      // ...validation...
+      setIsPublishing(true);
+      try {
+        // Save/update draft first (unchanged)
+        const submissionId = articleId === -1 ? undefined : Number(articleId);
+        const result = await submitArticle(formData, submissionId, false);
+
+        // Change status to 'pending_review'
+        await articlesAPI.changeStatus(result.article_id || articleId, 'pending_review');
+
+        showSnackbar('Article submitted for review successfully!', 'success');
+        setStatus({ message: 'Article submitted for review successfully!', type: 'success', progress: 100 });
+
+        // Redirect to write after publish
+        setTimeout(() => {
+          navigate('/write');
+        }, 1600); // Wait for success message to show
+
+      } catch (error) {
+        let errorMessage = 'Failed to publish article';
+        if (error.response?.data?.message) errorMessage = error.response.data.message;
+        else if (error.message) errorMessage = error.message;
+        showSnackbar(errorMessage, 'error');
+        setStatus({ message: errorMessage, type: 'error', progress: 0 });
+      } finally {
+        setTimeout(() => setStatus({ message: '', type: '', progress: 0 }), 3000);
+        setIsPublishing(false);
+      }
+    };
+
+  // Fullscreen
+  const toggleFullscreen = () => setEditorState(prev => ({ ...prev, isFullscreen: !prev.isFullscreen }));
+
+  // Color helpers
+  const getColor = (score) => {
+    if (score > 80) return 'success.main';
+    if (score > 60) return 'info.main';
+    if (score > 40) return 'warning.main';
+    return 'error.main';
+  };
+
+
+
+
+
+  const FONT_OPTIONS = [
+    { value: 'Inter', label: 'Inter' },
+    { value: 'Roboto', label: 'Roboto' },
+    { value: 'Open Sans', label: 'Open Sans' },
+    { value: 'Merriweather', label: 'Merriweather' },
+    { value: 'Georgia', label: 'Georgia' },
+    { value: 'Times New Roman', label: 'Times New Roman' },
+  ];
+
+  const handleThemeToggle = () => {
+    setIsDarkMode(!isDarkMode);
+  };
+
+    const handleProfileMenuOpen = (event) => {
+    setProfileAnchorEl(event.currentTarget);
+  };
+
+  const handleProfileMenuClose = () => {
+    setProfileAnchorEl(null);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/');
+      handleProfileMenuClose();
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+    // Save draft function
   const handleSaveDraft = async () => {
     if (isSubmitting) return;
     
@@ -773,117 +678,6 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
       }, 3000);
       setIsSubmitting(false);
     }
-  };
-
-  // Enhanced publish function with better state management
-  const handlePublish = async () => {
-    if (isSubmitting) return;
-
-    // Validation
-    const errors = [];
-    if (!formData.title.trim()) errors.push('Title is required');
-    if (!formData.content.trim()) errors.push('Content is required');
-    if (stats.wordCount < 50) errors.push('Article must be at least 50 words');
-    
-    if (errors.length > 0) { 
-      showSnackbar(errors.join(', '), 'error'); 
-      return; 
-    }
-
-    setIsSubmitting(true);
-    
-    try {
-      const submissionId = articleId === -1 ? undefined : Number(articleId);
-      const result = await submitArticle(formData, submissionId, false);
-
-      if (result.article_id) {
-        const newId = Number(result.article_id);
-        setArticleId(newId);
-      }
-
-      showSnackbar(
-        articleId === -1 
-          ? 'Article published successfully!' 
-          : 'Article updated successfully!',
-        'success'
-      );
-
-      // Clear form and localStorage only for new submissions
-      if (articleId === -1) {
-        const clearedFormData = { title: '', content: '', author: 'Current User' };
-        setFormData(clearedFormData);
-        if (editor) editor.commands.setContent('');
-        
-        // Clear all relevant localStorage
-        localStorage.removeItem(STORAGE_KEYS.DRAFT);
-        localStorage.removeItem(STORAGE_KEYS.FORM_DATA);
-        localStorage.removeItem(STORAGE_KEYS.ARTICLE_ID);
-        
-        // Reset articleId
-        setArticleId(-1);
-      }
-      
-    } catch (error) {
-      console.error('Publish error:', error);
-      showSnackbar(
-        `Publish failed: ${error.response?.data?.error || error.message || 'Unknown error'}`,
-        'error'
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Fullscreen
-  const toggleFullscreen = () => setEditorState(prev => ({ ...prev, isFullscreen: !prev.isFullscreen }));
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && editor) {
-        switch (e.key.toLowerCase()) {
-          case 'b': 
-            e.preventDefault();
-            editor.chain().focus().toggleBold().run();
-            break;
-          case 'i': 
-            e.preventDefault();
-            editor.chain().focus().toggleItalic().run();
-            break;
-          case 'u': 
-            e.preventDefault();
-            editor.chain().focus().toggleUnderline().run();
-            break;
-          case 's':
-            e.preventDefault();
-            handleSaveDraft();
-            break;
-          default: 
-            break;
-        }
-      }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [editor, handleSaveDraft]);
-
-  // Enhanced title change handler with immediate persistence
-  const handleTitleChange = (e) => {
-    const newTitle = e.target.value;
-    setFormData(prev => {
-      const updated = { ...prev, title: newTitle };
-      // Immediate save to localStorage
-      saveToStorage(STORAGE_KEYS.FORM_DATA, updated);
-      return updated;
-    });
-  };
-
-  // Color helpers
-  const getColor = (score) => {
-    if (score > 80) return 'success.main';
-    if (score > 60) return 'info.main';
-    if (score > 40) return 'warning.main';
-    return 'error.main';
   };
 
   return (
@@ -1433,67 +1227,127 @@ const SubmitArticlePage = ({ isDarkMode, setIsDarkMode }) => {
       </Snackbar>
 
       {/* Settings Dialog */}
-      <Dialog open={ui.settingsOpen} onClose={() => setUi(prev => ({ ...prev, settingsOpen: false }))}>
-        <DialogTitle>Editor Settings</DialogTitle>
-        <DialogContent>
-          <FormControlLabel
-            control={<Switch checked={editorState.enableAutoSave} onChange={(e) => setEditorState(prev => ({ ...prev, enableAutoSave: e.target.checked }))} />}
-            label="Enable Auto-Save"
-            sx={{ mb: 2 }}
-          />
-          
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel>Font Family</InputLabel>
-            <Select
-              value={editorState.fontFamily}
-              label="Font Family"
-              onChange={(e) => setEditorState(prev => ({ ...prev, fontFamily: e.target.value }))}
-            >
-              {FONT_OPTIONS.map((font) => (
-                <MenuItem key={font.value} value={font.value}>
-                  <span style={{ fontFamily: font.value }}>{font.label}</span>
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          
-          <Box sx={{ mb: 3 }}>
-            <Typography gutterBottom>Font Size: {editorState.fontSize}px</Typography>
-            <Slider
-              value={editorState.fontSize}
-              onChange={(e, newValue) => setEditorState(prev => ({ ...prev, fontSize: newValue }))}
-              min={12}
-              max={24}
-              step={1}
-              marks={[
-                { value: 12, label: '12' },
-                { value: 16, label: '16' },
-                { value: 20, label: '20' },
-                { value: 24, label: '24' },
-              ]}
-            />
+      <Dialog 
+        open={ui.settingsOpen} 
+        onClose={() => setUi(prev => ({ ...prev, settingsOpen: false }))}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            minWidth: 400,
+            background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+          }
+        }}
+      >
+        <DialogTitle 
+          sx={{ 
+            background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+            color: 'white',
+            textAlign: 'center',
+            fontWeight: 600,
+            fontSize: '1.25rem',
+            py: 3,
+            position: 'relative',
+            '&::before': {
+              content: '""',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(29, 78, 216, 0.1) 100%)',
+              backdropFilter: 'blur(10px)',
+            }
+          }}
+        >
+          <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+            <SettingsIcon sx={{ fontSize: '1.5rem' }} />
+            Editor Settings
           </Box>
-          
-          <Box sx={{ mb: 3 }}>
-            <Typography gutterBottom>Line Height: {editorState.lineHeight}</Typography>
-            <Slider
-              value={editorState.lineHeight}
-              onChange={(e, newValue) => setEditorState(prev => ({ ...prev, lineHeight: newValue }))}
-              min={1}
-              max={2}
-              step={0.1}
-              marks={[
-                { value: 1, label: '1' },
-                { value: 1.5, label: '1.5' },
-                { value: 2, label: '2' },
-              ]}
-            />
+        </DialogTitle>
+        
+        <DialogContent sx={{ p: 4, background: 'transparent' }}>
+          {/* Auto-Save Section */}
+          <Box 
+            sx={{ 
+              p: 4,
+              borderRadius: 3,
+              background: 'rgba(255, 255, 255, 0.8)',
+              backdropFilter: 'blur(15px)',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+              boxShadow: '0 8px 16px -4px rgba(0, 0, 0, 0.1)',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box 
+                  sx={{ 
+                    width: 48,
+                    height: 48,
+                    borderRadius: 2,
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.5rem',
+                  }}
+                >
+                  💾
+                </Box>
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#1f2937', mb: 0.5 }}>
+                    Auto-Save
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#6b7280', fontSize: '0.875rem', lineHeight: 1.4 }}>
+                    Automatically save your work as you type for peace of mind
+                  </Typography>
+                </Box>
+              </Box>
+              <Switch 
+                checked={editorState.enableAutoSave} 
+                onChange={(e) => setEditorState(prev => ({ ...prev, enableAutoSave: e.target.checked }))}
+                sx={{
+                  transform: 'scale(1.2)',
+                  '& .MuiSwitch-switchBase.Mui-checked': {
+                    color: '#10b981',
+                  },
+                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                    backgroundColor: '#10b981',
+                  },
+                  '& .MuiSwitch-track': {
+                    backgroundColor: '#d1d5db',
+                  },
+                }}
+              />
+            </Box>
           </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUi(prev => ({ ...prev, settingsOpen: false }))}>Close</Button>
+        
+        <DialogActions sx={{ p: 3, pt: 0, background: 'transparent' }}>
+          <Button 
+            onClick={() => setUi(prev => ({ ...prev, settingsOpen: false }))}
+            variant="contained"
+            fullWidth
+            sx={{
+              background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+              color: 'white',
+              fontWeight: 600,
+              py: 1.5,
+              borderRadius: 2,
+              textTransform: 'none',
+              fontSize: '1rem',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #2563eb 0%, #1e40af 100%)',
+                boxShadow: '0 6px 8px -1px rgba(0, 0, 0, 0.15)',
+              },
+            }}
+          >
+            Save Settings
+          </Button>
         </DialogActions>
       </Dialog>
+
 
       {/* Link Dialog */}
       <Dialog 

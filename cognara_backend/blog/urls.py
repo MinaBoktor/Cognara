@@ -24,4 +24,6 @@ urlpatterns = [
     path("submit", views.submit ,name="submit"),
     path('delete-article-image/<int:article_id>', views.delete_article_image, name='delete_article_image'),
     path('change_status', views.change_status, name='change_status'),
+    path('log_read', views.log_article_read, name='log_article_read'),
+
 ]
