@@ -1,6 +1,17 @@
 import axios from 'axios';
 
 
+const api = axios.create({
+  baseURL: process.env.REACT_APP_API_BASE_URL || '',
+  withCredentials: true
+});
+
+const getCsrfToken = () => {
+  return document.cookie.split('; ')
+    .find(row => row.startsWith('csrftoken='))
+    ?.split('=')[1] || '';
+};
+
 function getCookie(name) {
   const cookieValue = document.cookie
     .split('; ')
@@ -190,23 +201,69 @@ export const articlesAPI = {
       throw error;
     }
   },
-  logArticleRead: async (readData) => {
+  // Updated API method with better session handling
+  logArticleRead: async (data) => {
     try {
-      // Ensure CSRF token is available
-      await fetchCSRFToken();
+      const storageKey = `reading_session_${data.article_id}`;
+      
+      // Get session ID from localStorage or data
+      let sessionId = data.session_id;
+      if (!sessionId && data.status !== 'started') {
+        sessionId = localStorage.getItem(storageKey);
+      }
+      
+      const requestData = {
+        ...data,
+        session_id: sessionId || null // Explicitly set to null if no session
+      };
 
-      const response = await apiClient.post('log_read', readData);
-      return response.data;
+      console.log('API logArticleRead request:', requestData);
+
+      // For regular POST requests
+      if (!data.isUnloading) {
+        const response = await apiClient.post('/log_read', requestData, {
+          headers: {
+            'X-CSRFToken': getCsrfToken(),
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        // Store session ID if we got one back and don't already have one stored
+        if (response.data?.session_id) {
+          localStorage.setItem(storageKey, response.data.session_id);
+        }
+        
+        console.log('API logArticleRead response:', response.data);
+        return response.data;
+      }
+      
+      // For unload/beacon requests
+      if ('sendBeacon' in navigator && sessionId) {
+        // Only send beacon if we have a session ID
+        const blob = new Blob([JSON.stringify(requestData)], { 
+          type: 'application/json'
+        });
+
+        const result = navigator.sendBeacon('/log_read', blob);
+        console.log('Beacon sent:', result, requestData);
+        return result;
+      } else {
+        console.log('No session ID for beacon, skipping unload request');
+        return false;
+      }
     } catch (error) {
       console.error('Error logging article read:', error);
-
-      if (error.response?.status === 401) {
-        window.location.href = '/login';
+      
+      // If it's a session conflict, clear the stored session
+      if (error.response?.status === 409) {
+        const storageKey = `reading_session_${data.article_id}`;
+        localStorage.removeItem(storageKey);
+        console.log('Cleared invalid session from localStorage');
       }
-      throw error;
+      
+      throw error; // Re-throw so the caller can handle it
     }
-  },
-  
+  }
 };
 
 // Authentication API

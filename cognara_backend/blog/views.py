@@ -771,91 +771,152 @@ def change_status(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+OPEN_STATUSES = ["started", "in_progress"]
+VALID_STATUSES = ["started", "in_progress", "completed",
+                  "abandoned", "skimmed", "deep_read"]
+OPEN_SESSION_WINDOW_MIN = 180
+
+
+def find_latest_open_session(user_id, article_id):
+    try:
+        # Get the latest session for this user and article
+        response = (supabase.table("article_reads")
+                   .select("*")
+                   .eq("user_id", user_id)
+                   .eq("article_id", article_id)
+                   .order("created_at", desc=True)
+                   .limit(1)
+                   .execute())
+        
+        return response.data[0] if response.data else None
+    except Exception as e:
+        print(f"Error finding latest session: {e}")
+        return None
+
 @require_frontend_token
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def log_article_read(request):
-    if request.method == "POST":
+    if request.method != "POST":
+        return JsonResponse({"success": False, "error": "Invalid request method"}, status=405)
+
+    try:
+        data = parse_request_data(request)
+        print("Parsed data:", data)
+
+        user_id = data.get("user_id")
+        article_id = data.get("article_id")
+        status = data.get("status", "started")
+        scroll_depth = data.get("scroll_depth", 0.0)
+        active_time_seconds = data.get("active_time_seconds", 0)
+        required_time_seconds = data.get("required_time_seconds")
+        session_id = data.get("session_id")
+        force_new_session = data.get("force_new_session", False)  # Add this parameter
+
+        # Basic validation (same as before)
+        if not user_id or not article_id:
+            return JsonResponse({"success": False, "error": "user_id and article_id are required"}, status=400)
+
         try:
-            # Add detailed logging to debug the issue
-            print(f"Raw request data: {request.data}")
-            print(f"Request content type: {request.content_type}")
-            
-            user_id = request.data.get("user_id")
-            article_id = request.data.get("article_id")
-            status = request.data.get("status", "started")
-            scroll_depth = request.data.get("scroll_depth", 0.0)
-            active_time_seconds = request.data.get("active_time_seconds", 0)
-            required_time_seconds = request.data.get("required_time_seconds", 0)
-
-            # Validate required fields
-            if not user_id:
-                print("Missing user_id")
-                return JsonResponse({"success": False, "error": "user_id is required"}, status=400)
-            
-            if not article_id:
-                print("Missing article_id")
-                return JsonResponse({"success": False, "error": "article_id is required"}, status=400)
-
-            # Validate data types
-            try:
-                user_id = int(user_id)
-                article_id = int(article_id)
-                scroll_depth = float(scroll_depth)
-                active_time_seconds = int(active_time_seconds)
+            user_id = int(user_id)
+            article_id = int(article_id)
+            scroll_depth = float(scroll_depth or 0)
+            active_time_seconds = int(active_time_seconds or 0)
+            if required_time_seconds is not None:
                 required_time_seconds = int(required_time_seconds)
-            except (ValueError, TypeError) as e:
-                print(f"Data type conversion error: {e}")
-                return JsonResponse({"success": False, "error": f"Invalid data types: {str(e)}"}, status=400)
+        except (ValueError, TypeError) as e:
+            return JsonResponse({"success": False, "error": f"Invalid data types: {e}"}, status=400)
 
-            # Validate ranges - scroll_depth should be 0-100 (percentage) based on your schema
-            if not (0.0 <= scroll_depth <= 100.0):
-                print(f"Invalid scroll_depth: {scroll_depth}")
-                return JsonResponse({"success": False, "error": "scroll_depth must be between 0.0 and 100.0"}, status=400)
-            
-            if active_time_seconds < 0:
-                print(f"Invalid active_time_seconds: {active_time_seconds}")
-                return JsonResponse({"success": False, "error": "active_time_seconds must be non-negative"}, status=400)
-            
-            if required_time_seconds < 0:
-                print(f"Invalid required_time_seconds: {required_time_seconds}")
-                return JsonResponse({"success": False, "error": "required_time_seconds must be non-negative"}, status=400)
+        if status not in VALID_STATUSES:
+            return JsonResponse({"success": False, "error": f"status must be one of {VALID_STATUSES}"}, status=400)
+        if not (0.0 <= scroll_depth <= 100.0):
+            return JsonResponse({"success": False, "error": "scroll_depth must be between 0.0 and 100.0"}, status=400)
+        if active_time_seconds < 0:
+            return JsonResponse({"success": False, "error": "active_time_seconds must be non-negative"}, status=400)
 
-            # Validate status
-            valid_statuses = ["started", "in_progress", "completed"]
-            if status not in valid_statuses:
-                print(f"Invalid status: {status}")
-                return JsonResponse({"success": False, "error": f"status must be one of: {valid_statuses}"}, status=400)
+        # -------------------------
+        # 1) Update by session_id (only if not forcing new session)
+        # -------------------------
+        if session_id and not force_new_session:
+            existing = (supabase.table("article_reads")
+                        .select("id, session_id, status, scroll_depth, active_time_seconds, required_time_seconds")
+                        .eq("session_id", session_id)
+                        .limit(1).execute())
+            if existing.data:
+                row = existing.data[0]
+                db_rts = int(row.get("required_time_seconds") or 0)
+                if db_rts <= 0:
+                    db_rts = required_time_seconds if (isinstance(required_time_seconds, int) and required_time_seconds > 0) else estimate_required_time_seconds(article_id)
+                new_status, new_depth, new_time = merge_progress(row, status, scroll_depth, active_time_seconds)
 
-            print(f"Validated data - user_id: {user_id}, article_id: {article_id}, status: {status}, scroll_depth: {scroll_depth}, active_time: {active_time_seconds}, required_time: {required_time_seconds}")
+                upd = {
+                    "status": new_status,
+                    "scroll_depth": new_depth,
+                    "active_time_seconds": new_time,
+                    "required_time_seconds": db_rts
+                }
 
-            # Prepare data for Supabase
-            upsert_data = {
-                "user_id": user_id,
-                "article_id": article_id,
-                "status": status,
-                "scroll_depth": scroll_depth,  # Keep as percentage (0-100)
-                "active_time_seconds": active_time_seconds,
-                "required_time_seconds": required_time_seconds
-            }
+                if new_status == "completed":
+                    classification = classify_read(new_depth, new_time, db_rts)
+                    if classification:
+                        upd["status"] = classification
 
-            print(f"Attempting upsert to Supabase: {upsert_data}")
+                resp = (supabase.table("article_reads")
+                        .update(upd)
+                        .eq("session_id", session_id)
+                        .execute())
+                return JsonResponse({"success": True, "session_id": session_id, "data": resp.data[0] if resp.data else upd})
 
-            # Use proper upsert with on_conflict parameter to handle the unique constraint
-            response = supabase.table("article_reads").upsert(
-                upsert_data,
-                on_conflict="user_id,article_id"  # Specify the conflict columns
-            ).execute()
+        # -------------------------
+        # 2) Only recover recent sessions (page refresh scenario)
+        # -------------------------
+        if not force_new_session:
+            latest = find_latest_open_session(user_id, article_id)
+            # Only recover if very recent (5 minutes) - likely a page refresh
+            if latest and is_recent(latest.get("updated_at") or latest.get("created_at") or "", minutes=5):
+                db_rts = int(latest.get("required_time_seconds") or 0)
+                if db_rts <= 0:
+                    db_rts = required_time_seconds if (isinstance(required_time_seconds, int) and required_time_seconds > 0) else estimate_required_time_seconds(article_id)
+                new_status, new_depth, new_time = merge_progress(latest, status, scroll_depth, active_time_seconds)
 
-            print(f"Supabase response: {response}")
+                upd = {
+                    "status": new_status,
+                    "scroll_depth": new_depth,
+                    "active_time_seconds": new_time,
+                    "required_time_seconds": db_rts
+                }
 
-            return JsonResponse({"success": True, "data": response.data})
+                if new_status == "completed":
+                    classification = classify_read(new_depth, new_time, db_rts)
+                    if classification:
+                        upd["status"] = classification
 
-        except Exception as e:
-            print(f"Exception in log_article_read: {e}")
-            print(f"Exception type: {type(e)}")
-            import traceback
-            print(f"Traceback: {traceback.format_exc()}")
-            return JsonResponse({"success": False, "error": str(e)}, status=400)
+                resp = (supabase.table("article_reads")
+                        .update(upd)
+                        .eq("session_id", latest["session_id"])
+                        .execute())
+                return JsonResponse({"success": True, "session_id": latest["session_id"], "data": resp.data[0] if resp.data else upd})
 
-    return JsonResponse({"success": False, "error": "Invalid request method"}, status=405)
+        # -------------------------
+        # 3) Create fresh session
+        # -------------------------
+        rts = required_time_seconds if (isinstance(required_time_seconds, int) and required_time_seconds > 0) else estimate_required_time_seconds(article_id)
+        ins = {
+            "user_id": user_id,
+            "article_id": article_id,
+            "status": "started",
+            "scroll_depth": float(scroll_depth or 0.0),
+            "active_time_seconds": int(active_time_seconds or 0),
+            "required_time_seconds": rts
+        }
+        resp = supabase.table("article_reads").insert(ins).execute()
+        if not resp.data:
+            return JsonResponse({"success": False, "error": "Insert failed"}, status=500)
+        row = resp.data[0]
+        return JsonResponse({"success": True, "session_id": row["session_id"], "data": row})
+
+    except Exception as e:
+        import traceback
+        print("Exception in log_article_read:", e)
+        print(traceback.format_exc())
+        return JsonResponse({"success": False, "error": str(e)}, status=400)

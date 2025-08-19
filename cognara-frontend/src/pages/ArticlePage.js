@@ -122,245 +122,311 @@ export const ContentSection = styled(Box)(({ theme }) => ({
   },
 }));
 
-// Reading tracking hook
+const MINIMUM_READ_TIME = 10; // seconds before considering it a valid read
+
+
+
+// Simplified and robust useReadingTracker hook
+
 const useReadingTracker = (article, user) => {
   const [readingState, setReadingState] = useState({
     scrollDepth: 0,
     activeTimeSeconds: 0,
-    requiredTimeSeconds: 0,
-    isRead: false,
-    status: 'started'
+    sessionId: null,
+    status: 'not_started',
+    lastLogTime: 0
   });
 
   const trackingRef = useRef({
+    isLogging: false,
+    sessionId: null,
     startTime: Date.now(),
     lastActiveTime: Date.now(),
-    lastUpdateTime: Date.now(), // Track when we last updated active time
-    isTabVisible: true,
-    isUserActive: false, // Start as false, set to true on first activity
-    maxScrollDepth: 0,
     totalActiveTime: 0,
+    maxScrollDepth: 0,
+    lastLoggedScrollDepth: 0,
+    isTabVisible: !document.hidden,
+    isUnloading: false,
+    animationFrameId: null,
+    hasInitialized: false,
     lastLogTime: 0,
-    hasCompletedReading: false // Track if we've already marked as completed
+    lastLoggedActiveTime: 0,
+    intervals: [] // Track intervals for cleanup
   });
 
-  // Calculate estimated reading time (assuming ~200 words per minute)
-  const calculateReadingTime = useCallback((content) => {
-    if (!content) return 0;
-    const wordCount = content.replace(/<[^>]*>/g, '').split(/\s+/).length;
-    return Math.max(30, Math.ceil((wordCount / 200) * 60)); // Minimum 30 seconds
+  // Calculate scroll depth
+  const calculateScrollDepth = useCallback(() => {
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const windowHeight = window.innerHeight;
+    const documentHeight = document.documentElement.scrollHeight;
+    
+    if (documentHeight <= windowHeight) return 100;
+    
+    const scrollableHeight = documentHeight - windowHeight;
+    const scrollDepth = Math.min(100, Math.max(0, (scrollTop / scrollableHeight) * 100));
+    return Math.round(scrollDepth * 100) / 100;
   }, []);
 
-  // Track user activity with precise timing
-  const updateActivity = useCallback(() => {
+  // Update active time
+  const updateActiveTime = useCallback(() => {
+    if (trackingRef.current.isUnloading || !trackingRef.current.isTabVisible) return;
+
     const now = Date.now();
+    const timeDiff = now - trackingRef.current.lastActiveTime;
     
-    // If user was previously inactive, start tracking from this moment
-    if (!trackingRef.current.isUserActive) {
-      trackingRef.current.lastUpdateTime = now;
-    } else {
-      // User was already active, add the time since last update
-      const timeSinceLastUpdate = now - trackingRef.current.lastUpdateTime;
-      
-      // Only count time if it's reasonable (not more than 5 seconds gap)
-      if (timeSinceLastUpdate <= 5000) {
-        trackingRef.current.totalActiveTime += timeSinceLastUpdate;
-      }
-      
-      trackingRef.current.lastUpdateTime = now;
+    if (timeDiff < 5000) { // Only count reasonable time gaps
+      trackingRef.current.totalActiveTime += timeDiff;
     }
     
     trackingRef.current.lastActiveTime = now;
-    trackingRef.current.isUserActive = true;
-  }, []);
-
-  // Calculate scroll depth
-  const updateScrollDepth = useCallback(() => {
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    const windowHeight = window.innerHeight;
-    const documentHeight = Math.max(
-      document.body.scrollHeight,
-      document.body.offsetHeight,
-      document.documentElement.clientHeight,
-      document.documentElement.scrollHeight,
-      document.documentElement.offsetHeight
-    );
-
-    const scrollDepth = Math.min(100, (scrollTop + windowHeight) / documentHeight * 100);
-    trackingRef.current.maxScrollDepth = Math.max(trackingRef.current.maxScrollDepth, scrollDepth);
     
-    return scrollDepth;
+    const activeTimeSeconds = Math.floor(trackingRef.current.totalActiveTime / 1000);
+    setReadingState(prev => ({ ...prev, activeTimeSeconds }));
   }, []);
 
-  // Check if reading completion criteria are met
-  const checkReadingCompletion = useCallback((scrollDepth, activeTime, requiredTime) => {
-    const scrollThreshold = scrollDepth >= 85;
-    const timeThreshold = activeTime >= (requiredTime * 0.6);
-    return scrollThreshold && timeThreshold;
-  }, []);
+  // Check for recoverable session (very recent only)
+  const getRecoverableSession = useCallback(() => {
+    if (!article?.id) return null;
+    
+    const storageKey = `reading_session_${article.id}`;
+    const storedSessionId = localStorage.getItem(storageKey);
+    const storedTimestamp = localStorage.getItem(`${storageKey}_timestamp`);
+    
+    if (!storedSessionId || !storedTimestamp) return null;
+    
+    // Only recover if less than 2 minutes old (page refresh scenario)
+    const age = Date.now() - parseInt(storedTimestamp);
+    if (age < 2 * 60 * 1000) {
+      return storedSessionId;
+    }
+    
+    // Clear old storage
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(`${storageKey}_timestamp`);
+    return null;
+  }, [article?.id]);
 
-  // Log reading progress to backend
-  const logReadingProgress = useCallback(async (forceLog = false, isCompletion = false) => {
-    if (!article || !user) return;
+  const saveSessionToStorage = useCallback((sessionId) => {
+    if (!article?.id) return;
+    
+    const storageKey = `reading_session_${article.id}`;
+    localStorage.setItem(storageKey, sessionId);
+    localStorage.setItem(`${storageKey}_timestamp`, Date.now().toString());
+  }, [article?.id]);
+
+  const clearSessionStorage = useCallback(() => {
+    if (!article?.id) return;
+    
+    const storageKey = `reading_session_${article.id}`;
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(`${storageKey}_timestamp`);
+  }, [article?.id]);
+
+  const logReadingProgress = useCallback(async (forceLog = false, reason = 'periodic') => {
+    if (!article?.id || !user?.id || trackingRef.current.isLogging) return;
 
     const now = Date.now();
     const timeSinceLastLog = now - trackingRef.current.lastLogTime;
     
-    // Only log every 10 seconds unless forced or completion
-    if (!forceLog && !isCompletion && timeSinceLastLog < 10000) return;
+    if (!forceLog && timeSinceLastLog < 5000) return;
 
+    trackingRef.current.isLogging = true;
+    
     try {
-      const scrollDepth = trackingRef.current.maxScrollDepth;
       const activeTime = Math.floor(trackingRef.current.totalActiveTime / 1000);
-      const requiredTime = calculateReadingTime(article.content);
-      
-      // Determine if article is "read" based on criteria
-      const isRead = checkReadingCompletion(scrollDepth, activeTime, requiredTime);
-      const status = isRead ? 'completed' : 'in_progress';
+      const scrollDepth = Math.round(trackingRef.current.maxScrollDepth * 100) / 100;
 
-      // Ensure all data is properly formatted and valid
+      let status = reason === 'completed' ? 'completed' : 
+                   trackingRef.current.sessionId ? 'in_progress' : 'started';
+
       const logData = {
         user_id: parseInt(user.id),
         article_id: parseInt(article.id),
-        status: status,
-        scroll_depth: Math.min(100.0, Math.max(0.0, scrollDepth)), // Keep as percentage (0-100)
-        active_time_seconds: Math.max(0, activeTime),
-        required_time_seconds: Math.max(0, requiredTime)
+        status,
+        scroll_depth: scrollDepth,
+        active_time_seconds: activeTime,
+        session_id: trackingRef.current.sessionId
       };
 
-      console.log('Logging reading progress:', logData);
+      console.log('Logging reading progress:', { ...logData, reason });
 
-      await articlesAPI.logArticleRead(logData);
+      const response = await articlesAPI.logArticleRead(logData);
 
-      setReadingState({
-        scrollDepth,
-        activeTimeSeconds: activeTime,
-        requiredTimeSeconds: requiredTime,
-        isRead,
-        status
-      });
+      if (response?.session_id) {
+        trackingRef.current.sessionId = response.session_id;
+        setReadingState(prev => ({ ...prev, sessionId: response.session_id }));
+        saveSessionToStorage(response.session_id);
+      }
 
       trackingRef.current.lastLogTime = now;
-
-      // Mark as completed if this is the first time reaching completion
-      if (isRead && !trackingRef.current.hasCompletedReading) {
-        trackingRef.current.hasCompletedReading = true;
-        console.log('Article marked as read!');
-      }
+      trackingRef.current.lastLoggedScrollDepth = scrollDepth;
+      trackingRef.current.lastLoggedActiveTime = activeTime;
 
     } catch (error) {
       console.error('Failed to log reading progress:', error);
-      console.error('Error details:', error.response?.data);
-    }
-  }, [article, user, calculateReadingTime, checkReadingCompletion]);
-
-  // Update active time tracking with precise timing
-  const updateActiveTime = useCallback(() => {
-    if (!trackingRef.current.isTabVisible) return;
-
-    const now = Date.now();
-    
-    // If user is currently active, add time since last update
-    if (trackingRef.current.isUserActive) {
-      const timeSinceLastUpdate = now - trackingRef.current.lastUpdateTime;
       
-      // Only count reasonable time gaps (not more than 2 seconds)
-      if (timeSinceLastUpdate <= 2000) {
-        trackingRef.current.totalActiveTime += timeSinceLastUpdate;
+      if (error.response?.status === 409) {
+        trackingRef.current.sessionId = null;
+        setReadingState(prev => ({ ...prev, sessionId: null }));
+        clearSessionStorage();
       }
-      
-      trackingRef.current.lastUpdateTime = now;
+    } finally {
+      trackingRef.current.isLogging = false;
     }
-    
-    // Check for inactivity - if no activity for more than 3 seconds, mark as inactive
-    const timeSinceLastActivity = now - trackingRef.current.lastActiveTime;
-    if (timeSinceLastActivity > 3000) {
-      trackingRef.current.isUserActive = false;
-    }
+  }, [article, user, saveSessionToStorage, clearSessionStorage]);
 
-    // Check if user just completed reading and log immediately
-    if (!trackingRef.current.hasCompletedReading) {
-      const scrollDepth = trackingRef.current.maxScrollDepth;
-      const activeTime = Math.floor(trackingRef.current.totalActiveTime / 1000);
-      const requiredTime = calculateReadingTime(article?.content);
+  // Update scroll tracking
+  const updateScrollDepth = useCallback(() => {
+    const updateScroll = () => {
+      if (trackingRef.current.isUnloading) return;
+
+      const scrollDepth = calculateScrollDepth();
       
-      if (checkReadingCompletion(scrollDepth, activeTime, requiredTime)) {
-        logReadingProgress(true, true); // Force immediate log on completion
-      }
-    }
-  }, [article, calculateReadingTime, checkReadingCompletion, logReadingProgress]);
+      if (scrollDepth > trackingRef.current.maxScrollDepth) {
+        trackingRef.current.maxScrollDepth = scrollDepth;
+        setReadingState(prev => ({ ...prev, scrollDepth }));
 
-  useEffect(() => {
-    if (!article || !user) return;
-
-    // Initialize required reading time
-    const requiredTime = calculateReadingTime(article.content);
-    setReadingState(prev => ({ ...prev, requiredTimeSeconds: requiredTime }));
-
-    // Set up event listeners for activity tracking
-    const handleScroll = () => {
-      updateActivity();
-      const currentScrollDepth = updateScrollDepth();
-      
-      // Check for immediate completion on scroll if not already completed
-      if (!trackingRef.current.hasCompletedReading) {
-        const activeTime = Math.floor(trackingRef.current.totalActiveTime / 1000);
-        const requiredTime = calculateReadingTime(article.content);
+        const scrollChange = scrollDepth - trackingRef.current.lastLoggedScrollDepth;
+        const timeSinceLastLog = Date.now() - trackingRef.current.lastLogTime;
         
-        if (checkReadingCompletion(currentScrollDepth, activeTime, requiredTime)) {
-          logReadingProgress(true, true); // Force immediate log on completion
+        if (scrollChange >= 20 && timeSinceLastLog > 10000 && trackingRef.current.sessionId) {
+          logReadingProgress(false, 'scroll_update');
         }
       }
+
+      trackingRef.current.animationFrameId = requestAnimationFrame(updateScroll);
     };
 
-    const handleMouseMove = updateActivity;
-    const handleKeyPress = updateActivity;
-    const handleClick = updateActivity;
+    updateScroll();
+  }, [calculateScrollDepth, logReadingProgress]);
 
-    // Tab visibility tracking
+  // Handle unload
+  const handleUnload = useCallback(() => {
+    if (!trackingRef.current.sessionId) return;
+
+    trackingRef.current.isUnloading = true;
+    const activeTime = Math.floor(trackingRef.current.totalActiveTime / 1000);
+    const finalStatus = activeTime >= MINIMUM_READ_TIME ? 'completed' : 'in_progress';
+    
+    const finalLogData = {
+      user_id: parseInt(user.id),
+      article_id: parseInt(article.id),
+      session_id: trackingRef.current.sessionId,
+      status: finalStatus,
+      scroll_depth: Math.round(trackingRef.current.maxScrollDepth * 100) / 100,
+      active_time_seconds: activeTime
+    };
+
+    navigator.sendBeacon('/log_read', new Blob([JSON.stringify(finalLogData)], { type: 'application/json' }));
+    clearSessionStorage();
+  }, [user, article, clearSessionStorage]);
+
+  // Unload event listeners
+  useEffect(() => {
+    window.addEventListener('beforeunload', handleUnload);
+    window.addEventListener('pagehide', handleUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      window.removeEventListener('pagehide', handleUnload);
+    };
+  }, [handleUnload]);
+
+  // Visibility change
+  useEffect(() => {
     const handleVisibilityChange = () => {
       trackingRef.current.isTabVisible = !document.hidden;
-      if (!document.hidden) {
+      if (trackingRef.current.isTabVisible) {
         trackingRef.current.lastActiveTime = Date.now();
       }
     };
 
-    // Set up intervals - more frequent updates for better precision
-    const activeTimeInterval = setInterval(updateActiveTime, 500); // Update every 500ms instead of 1000ms
-    const logInterval = setInterval(() => logReadingProgress(false), 10000);
-
-    // Add event listeners
-    window.addEventListener('scroll', handleScroll);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('keydown', handleKeyPress);
-    window.addEventListener('click', handleClick);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
-    // Initial scroll depth calculation
-    updateScrollDepth();
+  // MAIN INITIALIZATION EFFECT - Simplified
+  useEffect(() => {
+    if (!article?.id || !user?.id || trackingRef.current.hasInitialized) return;
 
-    // Log initial state
-    logReadingProgress(true);
+    console.log('Initializing reading tracker for article:', article.id);
+    trackingRef.current.hasInitialized = true;
 
-    // Cleanup
-    return () => {
-      clearInterval(activeTimeInterval);
-      clearInterval(logInterval);
-      
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('keydown', handleKeyPress);
-      window.removeEventListener('click', handleClick);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    // Initialize state
+    trackingRef.current.startTime = Date.now();
+    trackingRef.current.lastActiveTime = Date.now();
+    trackingRef.current.totalActiveTime = 0;
+    trackingRef.current.maxScrollDepth = calculateScrollDepth();
+    trackingRef.current.isUnloading = false;
 
-      // Final log on cleanup
-      logReadingProgress(true);
+    // Try to recover recent session (only within 2 minutes)
+    const recoveredSessionId = getRecoverableSession();
+    if (recoveredSessionId) {
+      console.log('Recovering session:', recoveredSessionId);
+      trackingRef.current.sessionId = recoveredSessionId;
+      setReadingState(prev => ({ ...prev, sessionId: recoveredSessionId }));
+    }
+
+    // Start activity tracking
+    const handleUserActivity = () => {
+      trackingRef.current.lastActiveTime = Date.now();
     };
-  }, [article, user, updateActivity, updateScrollDepth, updateActiveTime, logReadingProgress, calculateReadingTime, checkReadingCompletion]);
+
+    // Time tracking interval
+    const timeInterval = setInterval(updateActiveTime, 1000);
+    trackingRef.current.intervals.push(timeInterval);
+
+    // Periodic logging interval  
+    const logInterval = setInterval(() => {
+      if (trackingRef.current.sessionId) {
+        logReadingProgress(false, 'periodic');
+      }
+    }, 30000);
+    trackingRef.current.intervals.push(logInterval);
+
+    // Event listeners
+    window.addEventListener('mousemove', handleUserActivity, { passive: true });
+    window.addEventListener('keydown', handleUserActivity, { passive: true });
+    window.addEventListener('click', handleUserActivity, { passive: true });
+    window.addEventListener('touchstart', handleUserActivity, { passive: true });
+
+    // Start tracking after a brief delay
+    const initTimeout = setTimeout(() => {
+      logReadingProgress(true, 'started');
+      updateScrollDepth();
+    }, 500);
+
+    // Cleanup function
+    return () => {
+      console.log('Cleaning up reading tracker');
+      
+      clearTimeout(initTimeout);
+      
+      // Clear intervals
+      trackingRef.current.intervals.forEach(clearInterval);
+      trackingRef.current.intervals = [];
+      
+      // Cancel animation frame
+      if (trackingRef.current.animationFrameId) {
+        cancelAnimationFrame(trackingRef.current.animationFrameId);
+      }
+      
+      // Remove event listeners
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('keydown', handleUserActivity);
+      window.removeEventListener('click', handleUserActivity);
+      window.removeEventListener('touchstart', handleUserActivity);
+      
+      // Reset initialization state
+      trackingRef.current.hasInitialized = false;
+    };
+  }, [article?.id, user?.id]); // Simplified dependencies
 
   return readingState;
 };
 
+
+// Updated ArticlePage component with cleaner tracking
 const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
   const { id } = useParams();
   const { user } = useAuth();
@@ -484,7 +550,7 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
 
       <ArticleContainer maxWidth="false">
         <MainContent>
-          {/* Reading progress indicator - only shows scroll progress, not completion status */}
+          {/* Clean reading progress indicator - no visible debug info */}
           {user && (
             <Box
               sx={{
@@ -492,7 +558,7 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
                 top: 0,
                 left: 0,
                 right: 0,
-                height: 4,
+                height: 3,
                 backgroundColor: 'rgba(0,0,0,0.1)',
                 zIndex: 1000,
               }}
@@ -502,7 +568,7 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
                   height: '100%',
                   width: `${readingState.scrollDepth}%`,
                   backgroundColor: 'primary.main',
-                  transition: 'width 0.3s ease',
+                  transition: 'width 0.2s ease-out',
                 }}
               />
             </Box>
@@ -522,7 +588,6 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
                 size="small"
                 variant="outlined"
               />
-              {/* Removed reading progress chip - users shouldn't see internal calculations */}
             </MetadataSection>
 
             {article.tags && (
@@ -558,6 +623,7 @@ const ArticlePage = ({ isDarkMode, setIsDarkMode }) => {
             }}
           />
 
+          {/* Comments section */}
           <Box sx={{
             marginTop: theme.spacing(8),
             paddingTop: theme.spacing(4),
